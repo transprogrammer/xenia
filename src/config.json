@@ -1,0 +1,12 @@
+{
+    "subscriptionId": "8713d401-d857-426a-95ff-9ff08e7930da"
+    "projectName": "xenia",
+    "primaryRegion": "useast2",
+    "secondaryRegion": "uswest2",
+    "addressSpace": [
+      "10.0.0.0/16"
+    ],
+    "subnetPrefixes": [
+      "10.1.0.0/24"
+    ]
+}
