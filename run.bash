@@ -2,5 +2,8 @@
 
 # REQ: Runs xenia. <>
 
+set -o errexit
+set -o xtrace
+
 cd src
 go run .
