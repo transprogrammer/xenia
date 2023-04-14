@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"os"
 
@@ -10,12 +11,12 @@ import (
 const ConfigFile = "config.json"
 
 type ConfigJSON struct {
-	SubscriptionId  string   `json:"subscriptionId"`
-	ProjectName     string   `json:"projectName"`
-	PrimaryRegion   string   `json:"primaryRegion"`
-	SecondaryRegion string   `json:"secondaryRegion"`
-	AddressSpace    []string `json:"addressSpace"`
-	SubnetPrefixes  []string `json:"subnetPrefixes"`
+	SubscriptionId  string            `json:"subscriptionId"`
+	ProjectName     string            `json:"projectName"`
+	PrimaryRegion   string            `json:"primaryRegion"`
+	SecondaryRegion string            `json:"secondaryRegion"`
+	AddressSpace    []string          `json:"addressSpace"`
+	Subnets         map[string]string `json:"subnets"`
 }
 
 type Config struct {
@@ -24,27 +25,35 @@ type Config struct {
 	primaryRegion   *string
 	secondaryRegion *string
 	addressSpace    []*string
-	subnetPrefixes  []*string
+	subnets         map[*string]*string
+}
+
+func sliceToJsii(strs []string) []*string {
+	jsiiStrs := make([]*string, len(strs))
+	for i, str := range strs {
+		jsiiStrs[i] = jsii.String(str)
+	}
+	return jsiiStrs
+}
+
+func mapToJsii(strMap map[string]string) map[*string]*string {
+	jsiiMap := make(map[*string]*string, len(strMap))
+	for k, v := range strMap {
+		jsiiMap[jsii.String(k)] = jsii.String(v)
+	}
+	return jsiiMap
 }
 
 func makeConfig() Config {
 	json := makeConfigJSON()
-
-	SliceToJsii := func(strs []string) []*string {
-		jsiiStrs := make([]*string, len(strs))
-		for i, str := range strs {
-			jsiiStrs[i] = jsii.String(str)
-		}
-		return jsiiStrs
-	}
 
 	return Config{
 		projectName:     jsii.String(json.ProjectName),
 		subscriptionId:  jsii.String(json.SubscriptionId),
 		primaryRegion:   jsii.String(json.PrimaryRegion),
 		secondaryRegion: jsii.String(json.SecondaryRegion),
-		addressSpace:    SliceToJsii(json.AddressSpace),
-		subnetPrefixes:  SliceToJsii(json.SubnetPrefixes),
+		addressSpace:    sliceToJsii(json.AddressSpace),
+		subnets:         mapToJsii(json.Subnets),
 	}
 }
 
@@ -60,13 +69,13 @@ func makeConfigJSON() ConfigJSON {
 		panic(err)
 	}
 
-	var json ConfigJSON
-	err = json.Unmarshal(bytes, &ConfigJSON)
+	var jso ConfigJSON
+	err = json.Unmarshal(bytes, jso)
 	if err != nil {
 		panic(err)
 	}
 
-	return json
+	return jso
 }
 
 func (cfg Config) ProjectName() *string {
@@ -89,6 +98,6 @@ func (cfg Config) AddressSpace() []*string {
 	return cfg.addressSpace
 }
 
-func (cfg Config) SubnetPrefixes() []*string {
-	return cfg.subnetPrefixes
+func (cfg Config) Subnets() map[*string]*string {
+	return cfg.subnets
 }
