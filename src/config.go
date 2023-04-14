@@ -29,9 +29,13 @@ type Config struct {
 
 func makeConfig() Config {
 	json := makeConfigJSON()
-	
-  toJsii := func(str string) interface{} {
-		return jsii.String(str)
+
+	SliceToJsii := func(strs []string) []*string {
+		jsiiStrs := make([]*string, len(strs))
+		for i, str := range strs {
+			jsiiStrs[i] = jsii.String(str)
+		}
+		return jsiiStrs
 	}
 
 	return Config{
@@ -39,19 +43,19 @@ func makeConfig() Config {
 		subscriptionId:  jsii.String(json.SubscriptionId),
 		primaryRegion:   jsii.String(json.PrimaryRegion),
 		secondaryRegion: jsii.String(json.SecondaryRegion),
-		addressSpace:    Map(json.AddressSpace, toJsii),
-		subnetPrefixes:  Map(json.SubnetPrefixes, toJsii),
+		addressSpace:    SliceToJsii(json.AddressSpace),
+		subnetPrefixes:  SliceToJsii(json.SubnetPrefixes),
 	}
 }
 
 func makeConfigJSON() ConfigJSON {
-	file, err := os.Open("ConfigFile"
+	file, err := os.Open(ConfigFile)
 	if err != nil {
 		panic(err)
 	}
 	defer file.Close()
 
-  bytes, err := ioutil.ReadAll(file)
+	bytes, err := ioutil.ReadAll(file)
 	if err != nil {
 		panic(err)
 	}
@@ -67,10 +71,6 @@ func makeConfigJSON() ConfigJSON {
 
 func (cfg Config) ProjectName() *string {
 	return cfg.projectName
-}
-
-func (cfg Config) ProviderName() *string {
-	return cfg.providerName
 }
 
 func (cfg Config) SubscriptionId() *string {
@@ -92,4 +92,3 @@ func (cfg Config) AddressSpace() []*string {
 func (cfg Config) SubnetPrefixes() []*string {
 	return cfg.subnetPrefixes
 }
-

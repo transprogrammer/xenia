@@ -6,8 +6,6 @@ github.com/aws/jsii-runtime-go v1.80.0 h1:INbbvOdx/UV/+qH4cGmKStCWL4SrEoRwF34nR/
 github.com/aws/jsii-runtime-go v1.80.0/go.mod h1:bV9T+Vxxczx5bK5CKZraDQS+enxb1sgdjAo/AhePGlM=
 github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5 v5.0.13 h1:YN35tJUQ9ADSpYpvAj9WRbeigEn4r66uOr1vuLj/GJ8=
 github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5 v5.0.13/go.mod h1:CTBtsxZHUaRgPZCioHwef3WhAjnyfDXGOGZwhFm7C4k=
-github.com/cdktf/cdktf-provider-null-go/null/v3 v3.0.12 h1:TKwdHDMkE7ZtzyYJCLedFjk36GwnTrvN4ZQxMyxW3gE=
-github.com/cdktf/cdktf-provider-null-go/null/v3 v3.0.12/go.mod h1:RgwEJZrLb8soy25k/FkmloIk5SZ1GzZeLJLn6VZOFF0=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/hashicorp/terraform-cdk-go/cdktf v0.15.5 h1:SCOaNCDOtqbm6wBNHkBBYXa1jgUuJ9S7ZkhozaB+8aA=
 github.com/hashicorp/terraform-cdk-go/cdktf v0.15.5/go.mod h1:16rRQdmk5np6AOOD2F+yUp5HGV2aPP2McP77ayT+Q1A=

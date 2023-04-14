@@ -19,5 +19,4 @@ require (
 require (
 	github.com/aws/jsii-runtime-go v1.80.0
 	github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5 v5.0.13
-	github.com/cdktf/cdktf-provider-null-go/null/v3 v3.0.12
 )

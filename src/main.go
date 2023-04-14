@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cdk.tf/go/stack/generated/naming"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 	"github.com/hashicorp/terraform-cdk-go/cdktf"
@@ -10,8 +11,6 @@ import (
 	provider "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
 	"github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/subnet"
 	vnet "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualnetwork"
-
-	"github.com/transprogrammer/xenia/generated/naming"
 )
 
 func main() {
@@ -25,15 +24,15 @@ func main() {
 	app.Synth()
 }
 
-func makeApp() tf.App {
-	return tf.NewApp(nil)
+func makeApp() cdktf.App {
+	return cdktf.NewApp(nil)
 }
 
 func makeStack(config Config, scope constructs.Construct) cdktf.TerraformStack {
 	return cdktf.NewTerraformStack(scope, config.ProjectName)
 }
 
-func makeProvider(config Config, stack tf.TerraformStack) provider.AzurermProvider {
+func makeProvider(config Config, stack cdktf.TerraformStack) provider.AzurermProvider {
 	return provider.NewAzurermProvider(stack, config.ProviderName, provider.AzurermProviderConfig{
 		Features:       &prv.AzurermProviderFeatures{},
 		SubscriptionId: SubscriptionId,
@@ -41,7 +40,7 @@ func makeProvider(config Config, stack tf.TerraformStack) provider.AzurermProvid
 
 }
 
-func addResources(config Config, stack tf.TerraformStack) {
+func addResources(config Config, stack cdktf.TerraformStack) {
 	naming := addNaming(config, stack)
 	rg := addRG(config, stack, naming)
 	vnet := addVNet(config, stack, naming, rg)
@@ -49,21 +48,23 @@ func addResources(config Config, stack tf.TerraformStack) {
 	// addNullResource(stack, naming)
 }
 
-func addNaming(config Config, stack tf.TerraformStack) naming.Naming {
+func addNaming(config Config, stack cdktf.TerraformStack) naming.Naming {
 	return naming.NewNaming(stack, jsii.String("naming"), &naming.NamingConfig{
 		Prefix:               &[]*string{ProjectName},
 		UniqueIncludeNumbers: jsii.Bool(false),
 	})
 }
 
-func addRG(config Config, stack tf.TerraformStack, naming naming.Naming) rg.ResourceGroup {
+func addRG(config Config, stack cdktf.TerraformStack, naming naming.Naming) rg.ResourceGroup {
 	return rg.NewResourceGroup(stack, jsii.String("rg"), rg.ResourceGroupConfig{
 		Name:     naming.ResourceGroupOutput(),
 		Location: config.PrimaryRegion,
 	})
 }
 
-func addVNet(config Config, stack tf.TerraformStack, naming naming.Naming, rg rg.ResourceGroup) vnet.VirtualNetwork {
+// ???: Inline subnet too enable updating in-place. <>
+// SEE: https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deployment-modes#incremental-mode <>
+func addVNet(config Config, stack cdktf.TerraformStack, naming naming.Naming, rg rg.ResourceGroup) vnet.VirtualNetwork {
 	return vnet.NewVirtualNetwork(stack, jsii.String("vnet"), vnet.VirtualNetworkConfig{
 
 		Name:              naming.VirtualNetworkOutput(),
@@ -73,7 +74,7 @@ func addVNet(config Config, stack tf.TerraformStack, naming naming.Naming, rg rg
 	})
 }
 
-func addSubnet(config Config, stack tf.TerraformStack, naming naming.Naming, rg rg.ResourceGroup, vnet vnet.VirtualNetwork) subnet.Subnet {
+func addSubnet(config Config, stack cdktf.TerraformStack, naming naming.Naming, rg rg.ResourceGroup, vnet vnet.VirtualNetwork) subnet.Subnet {
 	return subnet.NewSubnet(stack, jsii.String("subnet"), subnet.SubnetConfig{
 		Name:               naming.SubnetOutput(),
 		ResourceGroupName:  rg.Name(),
@@ -81,7 +82,7 @@ func addSubnet(config Config, stack tf.TerraformStack, naming naming.Naming, rg 
 		AddressPrefixes:    config.AddressPrefixes,
 	})
 
-	// func addNullResource(stack tf.TerraformStack) *nullresource.Resource {
+	// func addNullResource(stack cdktf.TerraformStack) *nullresource.Resource {
 	// 	return nullresource.NewResource(stack, "null", &nullresource.ResourceConfig{})
 	// }
 
@@ -108,7 +109,7 @@ func addSubnet(config Config, stack tf.TerraformStack, naming naming.Naming, rg 
 
 		AdminSshKey: &[]*linuxvirtualmachine.LinuxVirtualMachineAdminSshKey{{
 			Username:  jsii.String("glados"),
-			PublicKey: tf.Fn_File(jsii.String("~/.ssh/id_rsa.pub")),
+			PublicKey: cdktf.Fn_File(jsii.String("~/.ssh/id_rsa.pub")),
 		}},
 
 		OsDisk: &linuxvirtualmachine.LinuxVirtualMachineOsDisk{
@@ -125,7 +126,7 @@ func addSubnet(config Config, stack tf.TerraformStack, naming naming.Naming, rg 
 	})
 
 	//Output stuff
-	tf.NewTerraformOutput(stack, jsii.String("names"), &tf.TerraformOutputConfig{
+	cdktf.NewTerraformOutput(stack, jsii.String("names"), &cdktf.TerraformOutputConfig{
 		Value: &[]*string{vm.Name(), rg.Name()},
 	})
 
