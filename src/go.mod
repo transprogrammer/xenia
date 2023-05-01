@@ -1,4 +1,4 @@
-module cdk.tf/go/stack
+module github.com/transprogrammer/xenia
 
 go 1.20
 

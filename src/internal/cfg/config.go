@@ -1,4 +1,4 @@
-package main
+package cfg
 
 import (
 	"encoding/json"
@@ -26,6 +26,7 @@ type Config struct {
 	secondaryRegion *string
 	addressSpace    []*string
 	subnets         map[*string]*string
+	ids             *ids
 }
 
 func sliceToJsii(strs []string) []*string {
@@ -44,16 +45,17 @@ func mapToJsii(strMap map[string]string) map[*string]*string {
 	return jsiiMap
 }
 
-func makeConfig() Config {
+func MakeConfig() *Config {
 	json := makeConfigJSON()
 
-	return Config{
+	return &Config{
 		projectName:     jsii.String(json.ProjectName),
 		subscriptionId:  jsii.String(json.SubscriptionId),
 		primaryRegion:   jsii.String(json.PrimaryRegion),
 		secondaryRegion: jsii.String(json.SecondaryRegion),
 		addressSpace:    sliceToJsii(json.AddressSpace),
 		subnets:         mapToJsii(json.Subnets),
+		ids:             MakeIds(),
 	}
 }
 
@@ -70,7 +72,7 @@ func makeConfigJSON() ConfigJSON {
 	}
 
 	var jso ConfigJSON
-	err = json.Unmarshal(bytes, jso)
+	err = json.Unmarshal(bytes, &jso)
 	if err != nil {
 		panic(err)
 	}
@@ -100,4 +102,8 @@ func (cfg Config) AddressSpace() []*string {
 
 func (cfg Config) Subnets() map[*string]*string {
 	return cfg.subnets
+}
+
+func (cfg Config) Ids() *ids {
+	return cfg.ids
 }
