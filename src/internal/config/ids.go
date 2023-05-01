@@ -1,4 +1,4 @@
-package cfg
+package config
 
 import "github.com/aws/jsii-runtime-go"
 
