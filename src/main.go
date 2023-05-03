@@ -6,6 +6,11 @@ import (
 	"github.com/transprogrammer/xenia/generated/naming"
 	cfg "github.com/transprogrammer/xenia/internal/config"
 
+	asg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/applicationsecuritygroup"
+	nic "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networkinterface"
+	nicasg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networkinterfaceapplicationsecuritygroupassociation"
+	nicnsg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networkinterfacesecuritygroupassociation"
+	nsg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networksecuritygroup"
 	prov "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
 	ip "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/publicip"
 	rg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/resourcegroup"
@@ -17,15 +22,26 @@ func main() {
 }
 
 func makeApp() tf.App {
-	config := cfg.MakeConfig()
+	cfg := cfg.MakeConfig()
 	app := tf.NewApp(nil)
+	stk := tf.NewTerraformStack(app, cfg.ProjectName())
 
-	stack := tf.NewTerraformStack(app, config.ProjectName())
-	makeAzureRMProvider(config, stack)
+	makeAzureRMProvider(cfg, stk)
 
-	namingModule := makeNamingModule(config, stack, []*string{})
-	resourceGroup := makeResourceGroup(config, stack, namingModule)
-	makeVirtualNetwork(config, stack, namingModule, resourceGroup)
+	nme := makeNamingModule(cfg, stk, []*string{})
+	rg := makeResourceGroup(cfg, stk, nme)
+
+	ip := makePublicIPAddress(cfg, stk, nme, rg)
+	vnet := makeVirtualNetwork(cfg, stk, nme, rg)
+
+	nsg := makeNetworkSecurityGroup(cfg, stk, nme, rg)
+	asg := makeApplicationSecurityGroup(cfg, stk, nme, rg)
+
+	nic := makeNetworkInterface(cfg, stk, nme, rg, vnet, ip)
+	associateNICWithNSG(cfg, stk, nme, nic, nsg)
+	associateNICWithASG(cfg, stk, nme, nic, asg)
+
+	makeVirtualMachine(cfg, stk, nme, rg, nic, vnet)
 
 	return app
 }
@@ -99,4 +115,133 @@ func makePublicIPAddress(cfg *cfg.Config, stack tf.TerraformStack, naming *namin
 		IdleTimeoutInMinutes: jsii.Number(4),
 	})
 	return &publicIp
+}
+
+func makeNetworkSecurityGroup(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming, rg *rg.ResourceGroup) *nsg.NetworkSecurityGroup {
+	networkSecurityRule := nsg.NetworkSecurityGroupSecurityRule{
+		Name:                     jsii.String("SSH"),
+		Description:              jsii.String("Allow SSH"),
+		Priority:                 jsii.Number(100),
+		Direction:                jsii.String("Inbound"),
+		Access:                   jsii.String("Allow"),
+		Protocol:                 jsii.String("Tcp"),
+		SourcePortRange:          jsii.String("*"),
+		DestinationPortRange:     jsii.String("22"),
+		SourceAddressPrefix:      jsii.String("*"),
+		DestinationAddressPrefix: jsii.String("*"),
+	}
+
+	networkSecurityGroup := nsg.NewNetworkSecurityGroup(stack, cfg.Ids().NetworkSecurityGroup(), &nsg.NetworkSecurityGroupConfig{
+		Name:              (*naming).NetworkSecurityGroupOutput(),
+		Location:          (*rg).Location(),
+		ResourceGroupName: (*rg).Name(),
+		SecurityRule:      networkSecurityRule,
+	})
+
+	return &networkSecurityGroup
+}
+
+func makeApplicationSecurityGroup(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming, rg *rg.ResourceGroup) *asg.ApplicationSecurityGroup {
+	applicationSecurityGroup := asg.NewApplicationSecurityGroup(stack, cfg.Ids().ApplicationSecurityGroup(), &asg.ApplicationSecurityGroupConfig{
+		Name:              (*naming).ApplicationSecurityGroupOutput(),
+		Location:          (*rg).Location(),
+		ResourceGroupName: (*rg).Name(),
+	})
+
+	return &applicationSecurityGroup
+}
+
+func makeNetworkInterface(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming, rg *rg.ResourceGroup, vnet *vnet.VirtualNetwork, publicIp *ip.PublicIp) *nic.NetworkInterface {
+	networkInterface := nic.NewNetworkInterface(stack, cfg.Ids().NetworkInterface(), &nic.NetworkInterfaceConfig{
+		Name:              (*naming).NetworkInterfaceOutput(),
+		Location:          (*rg).Location(),
+		ResourceGroupName: (*rg).Name(),
+
+		IpConfiguration: nic.NetworkInterfaceIpConfiguration{
+			Name:              jsii.String("ipconfig"),
+			Primary:           jsii.Bool(true),
+			SubnetId:          vnet.vmSubnet().Id(),
+			PublicIpAddressId: (*publicIp).Id(),
+		},
+	})
+
+	return &networkInterface
+}
+
+func associateNICWithNSG(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming, nic *nic.NetworkInterface, nsg *nsg.NetworkSecurityGroup) {
+	nicNSGAssociation := nicnsg.NewNetworkInterfaceSecurityGroupAssociation()(stack, cfg.Ids().NetworkInterfaceNSGAssociation(), &nicnsg.NetworkInterfaceSecurityGroupAssociationConfig{
+		NetworkInterfaceId:     (*nic).Id(),
+		NetworkSecurityGroupId: (*nsg).Id(),
+	})
+
+	return &nicNSGAssociation
+}
+
+func associateNICWithASG(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming, nic *nic.NetworkInterface, asg *asg.ApplicationSecurityGroup) {
+	nicASGAssociation := nicasg.NewNetworkInterfaceApplicationSecurityGroupAssociation()(stack, cfg.Ids().NetworkInterfaceASGAssociation(), &nicasg.NetworkInterfaceApplicationSecurityGroupAssociationConfig{
+		NetworkInterfaceId:                        (*nic).Id(),
+		ApplicationSecurityGroupId:                (*asg).Id(),
+		IpConfigurationName:                       jsii.String("ipconfig"),
+		IpConfigurationPrivateIpAddressAllocation: jsii.String("Dynamic"),
+	})
+
+	return &nicASGAssociation
+}
+
+func makeVirtualMachine(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming, rg *rg.ResourceGroup, nic *nic.NetworkInterface) *vm.VirtualMachine {
+	virtualMachine := vm.NewVirtualMachine(stack, cfg.Ids().VirtualMachine(), &vm.VirtualMachineConfig{
+		Name:              (*naming).VirtualMachineOutput(),
+		Location:          (*rg).Location(),
+		ResourceGroupName: (*rg).Name(),
+
+		NetworkInterfaceIds: []string{(*nic).Id()},
+		VmSize:              jsii.String("Standard_B1s"),
+		//OsDisk:              nil,
+		//StorageImageReference: nil,
+		//StorageOsDisk:         nil,
+		//StorageDataDisk:       nil,
+		//OsProfile:             nil,
+		//OsProfileLinuxConfig:  nil,
+		//OsProfileSecrets:      nil,
+		//BootDiagnostics:       nil,
+		//AdditionalUnattendConfig: nil,
+		//AvailabilitySetId:       nil,
+		//LicenseType:             nil,
+		//Diag:                    nil,
+		//ProtectionPolicy:        nil,
+		//Plan:                    nil,
+		//Identity:                nil,
+		//Extension:               nil,
+		//CustomData:              nil,
+		//ProvisioningTimeout:     nil,
+		//ProvisioningState:       nil,
+		//ComputerName:            nil,
+		//AdminUsername:           nil,
+		//AdminPassword:           nil,
+		//AllowExtensionOperations: nil,
+		//DeleteDataDisksOnTermination: nil,
+		//DeleteOsDiskOnTermination:    nil,
+		//EnableAutomaticUpdates:       nil,
+		//EnableHotpatching:            nil,
+		//EnableVmAgent:                nil,
+		//LicenseType:                  nil,
+		//MaxPrice:                     nil,
+		//OsProfile:                    nil,
+		//OsProfileLinuxConfig:         nil,
+		//OsProfileSecrets:             nil,
+		//Priority:                     nil,
+		//ProvisionVmAgent:             nil,
+		//StorageImageReference:        nil,
+		//StorageOsDisk:                nil,
+		//StorageDataDisk:              nil,
+		//Tags:                         nil,
+		//UserData:                     nil,
+		//VmSize:                       nil,
+	})
+
+	return &
+}
+
+func (vnet *vnet.VirtualNetwork) vmSubnet() *vnet.VirtualNetworkSubnetOutputReference {
+	return vnet.subnet
 }
