@@ -14,7 +14,7 @@ type ids struct {
 	network_interface_asg_association *string
 }
 
-func MakeIds() *ids {
+func makeIds() *ids {
 	return &ids{
 		azurerm_provider:                  jsii.String("azurerm"),
 		naming_module:                     jsii.String("naming"),
