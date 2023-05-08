@@ -9,8 +9,14 @@
     "10.0.0.0/16"
   ],
   "subnets": {
-    "virtualMachine": "10.1.0.0/24",
-    "mongoDB": "10.2.0.0/24"
+    "virtualMachine": {
+      "postfix": "vm",
+      "addressPrefix": "10.1.0.0/24"
+    },
+    "mongoDB": {
+      "postfix": "mongo",
+      "addressPrefix": "10.2.0.0/24"
+    }
   },
   "virtualMachine": {
     "size": "Standard_B2ms",

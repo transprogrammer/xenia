@@ -41,7 +41,7 @@ func makeApp() tf.App {
 	associateNICWithNSG(cfg, stk, nme, nic, nsg)
 	associateNICWithASG(cfg, stk, nme, nic, asg)
 
-	makeVirtualMachine(cfg, stk, nme, rg, nic, vnet)
+	//makeVirtualMachine(cfg, stk, nme, rg, nic, vnet)
 
 	return app
 }
@@ -68,7 +68,7 @@ func makeNamingModule(cfg *cfg.Config, stack tf.TerraformStack, suffixes []*stri
 func makeResourceGroup(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming) *rg.ResourceGroup {
 	resourceGroup := rg.NewResourceGroup(stack, cfg.Ids().ResourceGroup(), &rg.ResourceGroupConfig{
 		Name:     (*naming).ResourceGroupOutput(),
-		Location: cfg.PrimaryRegion(),
+		Location: cfg.Regions().Primary(),
 	})
 	return &resourceGroup
 }
@@ -76,17 +76,16 @@ func makeResourceGroup(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.
 // ???: Inline subnet too enable updating in-place. <>
 // SEE: https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deployment-modes#incremental-mode <>
 func makeVirtualNetwork(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming, rg *rg.ResourceGroup) *vnet.VirtualNetwork {
-	subnets := make([]vnet.VirtualNetworkSubnet, len(cfg.Subnets()))
-	i := 0
-	for k, v := range cfg.Subnets() {
-		subnetNaming := makeNamingModule(cfg, stack, []*string{k})
 
-		subnets[i] = vnet.VirtualNetworkSubnet{
-			Name:          (*subnetNaming).SubnetOutput(),
-			AddressPrefix: v,
-			//SecurityGroup: nil,
-		}
-		i++
+	subnets := []vnet.VirtualNetworkSubnet{
+		vnet.VirtualNetworkSubnet{
+			Name:          (*makeNamingModule(cfg, stack, []*string{cfg.Subnets().MongoDB().Postfix()})).SubnetOutput(),
+			AddressPrefix: cfg.Subnets().MongoDB().AddressPrefix(),
+		},
+		vnet.VirtualNetworkSubnet{
+			Name:          (*makeNamingModule(cfg, stack, []*string{cfg.Subnets().MongoDB().Postfix()})).SubnetOutput(),
+			AddressPrefix: cfg.Subnets().VirtualMachine().AddressPrefix(),
+		},
 	}
 
 	addressSpace := cfg.AddressSpace()
@@ -160,7 +159,7 @@ func makeNetworkInterface(cfg *cfg.Config, stack tf.TerraformStack, naming *nami
 		IpConfiguration: nic.NetworkInterfaceIpConfiguration{
 			Name:              jsii.String("ipconfig"),
 			Primary:           jsii.Bool(true),
-			SubnetId:          vnet.vmSubnet().Id(),
+			SubnetId:          (*vnet).Subnet().MongoDBSubnet().Id(),
 			PublicIpAddressId: (*publicIp).Id(),
 		},
 	})
@@ -188,19 +187,24 @@ func associateNICWithASG(cfg *cfg.Config, stack tf.TerraformStack, naming *namin
 	return &nicASGAssociation
 }
 
-func makeVirtualMachine(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming, rg *rg.ResourceGroup, nic *nic.NetworkInterface) *vm.VirtualMachine {
-	virtualMachine := vm.NewVirtualMachine(stack, cfg.Ids().VirtualMachine(), &vm.VirtualMachineConfig{
-		Name:              (*naming).VirtualMachineOutput(),
-		Location:          (*rg).Location(),
-		ResourceGroupName: (*rg).Name(),
+// func makeVirtualMachine(cfg *cfg.Config, stack tf.TerraformStack, naming *naming.Naming, rg *rg.ResourceGroup, nic *nic.NetworkInterface) *vm.VirtualMachine {
+// 	virtualMachine := vm.NewVirtualMachine(stack, cfg.Ids().VirtualMachine(), &vm.VirtualMachineConfig{
+// 		Name:              (*naming).VirtualMachineOutput(),
+// 		Location:          (*rg).Location(),
+// 		ResourceGroupName: (*rg).Name(),
+//
+// 		NetworkInterfaceIds: []string{(*nic).Id()},
+// 		VmSize:              jsii.String("Standard_B1s"),
+//	}
+//
+// 	return &virtualMachine
+// }
 
-		NetworkInterfaceIds: []string{(*nic).Id()},
-		VmSize:              jsii.String("Standard_B1s"),
-	})
-
-	return &virtualMachine
+// FIXME: Properly Select. <eris 2023-05-08>
+func MongoDBSubnet(subnets []*vnet.VirtualNetworkSubnetOutputReference) *vnet.VirtualNetworkSubnetOutputReference {
+	return subnets[0]
 }
 
-func (vnet *vnet.VirtualNetwork) vmSubnet() *vnet.VirtualNetworkSubnetOutputReference {
-	return vnet.subnet
+func VirtualMachineSubnet(subnets []*vnet.VirtualNetworkSubnetOutputReference) *vnet.VirtualNetworkSubnetOutputReference {
+	return subnets[1]
 }

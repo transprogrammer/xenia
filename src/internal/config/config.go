@@ -8,49 +8,58 @@ import (
 
 const ConfigFile = "config.json"
 
-type regionsJSON struct {
+type regionsJSO struct {
 	Primary   *string `json:"primary"`
 	Secondary *string `json:"secondary"`
 }
-type regions struct {
+type Regions struct {
 	primary   *string
 	secondary *string
 }
 
-type subnetsJSON struct {
-	VirtualMachine *string `json:"virtualMachine"`
-	MongoDB        *string `json:"mongoDB"`
+type subnetJSO struct {
+	Postfix       *string `json:"postfix"`
+	AddressPrefix *string `json:"addressPrefix"`
 }
-type subnets struct {
-	virtualMachine *string
-	mongoDB        *string
+type Subnet struct {
+	postfix       *string
+	addressPrefix *string
 }
 
-type imageReferenceJSON struct {
+type subnetsJSO struct {
+	VirtualMachine *subnetJSO `json:"virtualMachine"`
+	MongoDB        *subnetJSO `json:"mongoDB"`
+}
+type Subnets struct {
+	virtualMachine *Subnet
+	mongoDB        *Subnet
+}
+
+type imageReferenceJSO struct {
 	Publisher *string `json:"publisher"`
 	Offer     *string `json:"offer"`
 	Sku       *string `json:"sku"`
 	Version   *string `json:"version"`
 }
-type imageReference struct {
+type ImageReference struct {
 	publisher *string
 	offer     *string
 	sku       *string
 	version   *string
 }
 
-type virtualMachineJSON struct {
-	Size               *string         `json:"size"`
-	StorageAccountType *string         `json:"storageAccountType"`
-	ImageReference     *imageReference `json:"imageReference"`
+type virtualMachineJSO struct {
+	Size               *string            `json:"size"`
+	StorageAccountType *string            `json:"storageAccountType"`
+	ImageReferenceJSO  *imageReferenceJSO `json:"imageReference"`
 }
-type virtualMachine struct {
+type VirtualMachine struct {
 	size               *string
 	storageAccountType *string
-	imageReference     *imageReference
+	imageReference     *ImageReference
 }
 
-type databaseAccountJSON struct {
+type databaseAccountJSO struct {
 	Kind                    *string   `json:"kind"`
 	ServerVersion           *string   `json:"serverVersion"`
 	OfferType               *string   `json:"offerType"`
@@ -58,7 +67,7 @@ type databaseAccountJSON struct {
 	DefaultConsistencyLevel *string   `json:"defaultConsistencyLevel"`
 	Capabilities            []*string `json:"capabilities"`
 }
-type databaseAccount struct {
+type DatabaseAccount struct {
 	kind                    *string
 	serverVersion           *string
 	offerType               *string
@@ -67,27 +76,35 @@ type databaseAccount struct {
 	capabilities            []*string
 }
 
-type configJSON struct {
-	SubscriptionId  *string              `json:"subscriptionId"`
-	ProjectName     *string              `json:"projectName"`
-	Regions         *string              `json:"regions"`
-	AddressSpace    []*string            `json:"addressSpace"`
-	Subnets         *subnets             `json:"subnets"`
-	VirtualMachine  *virtualMachineJSON  `json:"virtualMachine"`
-	DatabaseAccount *databaseAccountJSON `json:"databaseAccount"`
-	ids             *ids
+type configJSO struct {
+	SubscriptionId     *string             `json:"subscriptionId"`
+	ProjectName        *string             `json:"projectName"`
+	RegionsJSO         *regionsJSO         `json:"regions"`
+	AddressSpace       []*string           `json:"addressSpace"`
+	SubnetsJSO         *subnetsJSO         `json:"subnets"`
+	VirtualMachineJSO  *virtualMachineJSO  `json:"virtualMachine"`
+	DatabaseAccountJSO *databaseAccountJSO `json:"databaseAccount"`
+}
+type Config struct {
+	subscriptionId  *string
+	projectName     *string
+	regions         *Regions
+	addressSpace    []*string
+	subnets         *Subnets
+	virtualMachine  *VirtualMachine
+	databaseAccount *DatabaseAccount
+	ids             *Ids
 }
 
 func MakeConfig() *Config {
-	configJSON := makeConfigJSON()
-	return makeConfigFromJSON
-	config
+	configJSO := makeConfigJSO()
+	config := makeConfigFromJSO(configJSO)
 	config.ids = makeIds()
 
 	return config
 }
 
-func makeConfig() *Config {
+func makeConfigJSO() *configJSO {
 	file, err := os.Open(ConfigFile)
 	if err != nil {
 		panic(err)
@@ -99,7 +116,7 @@ func makeConfig() *Config {
 		panic(err)
 	}
 
-	var cfg Config
+	var cfg configJSO
 	err = json.Unmarshal(bytes, &cfg)
 	if err != nil {
 		panic(err)
@@ -108,99 +125,150 @@ func makeConfig() *Config {
 	return &cfg
 }
 
-func (cfg Config) ProjectName() *string {
-	return cfg.projectName
+func makeConfigFromJSO(jso *configJSO) *Config {
+	return &Config{
+		subscriptionId: jso.SubscriptionId,
+		projectName:    jso.ProjectName,
+		regions: &Regions{
+			primary:   jso.RegionsJSO.Primary,
+			secondary: jso.RegionsJSO.Secondary,
+		},
+		addressSpace: jso.AddressSpace,
+		subnets: &Subnets{
+			virtualMachine: &Subnet{
+				postfix:       jso.SubnetsJSO.VirtualMachine.Postfix,
+				addressPrefix: jso.SubnetsJSO.VirtualMachine.AddressPrefix,
+			},
+			mongoDB: &Subnet{
+				postfix:       jso.SubnetsJSO.MongoDB.Postfix,
+				addressPrefix: jso.SubnetsJSO.MongoDB.AddressPrefix,
+			},
+		},
+		virtualMachine: &VirtualMachine{
+			size:               jso.VirtualMachineJSO.Size,
+			storageAccountType: jso.VirtualMachineJSO.StorageAccountType,
+			imageReference: &ImageReference{
+				publisher: jso.VirtualMachineJSO.ImageReferenceJSO.Publisher,
+				offer:     jso.VirtualMachineJSO.ImageReferenceJSO.Offer,
+				sku:       jso.VirtualMachineJSO.ImageReferenceJSO.Sku,
+				version:   jso.VirtualMachineJSO.ImageReferenceJSO.Version,
+			},
+		},
+		databaseAccount: &DatabaseAccount{
+			kind:                    jso.DatabaseAccountJSO.Kind,
+			serverVersion:           jso.DatabaseAccountJSO.ServerVersion,
+			offerType:               jso.DatabaseAccountJSO.OfferType,
+			backupPolicyType:        jso.DatabaseAccountJSO.BackupPolicyType,
+			defaultConsistencyLevel: jso.DatabaseAccountJSO.DefaultConsistencyLevel,
+			capabilities:            jso.DatabaseAccountJSO.Capabilities,
+		},
+	}
 }
 
-func (cfg Config) SubscriptionId() *string {
+func (cfg *Config) SubscriptionId() *string {
 	return cfg.subscriptionId
 }
 
-func (cfg Config) AddressSpace() []*string {
+func (cfg *Config) ProjectName() *string {
+	return cfg.projectName
+}
+
+func (cfg *Config) Regions() *Regions {
+	return cfg.regions
+}
+
+func (cfg *Config) AddressSpace() []*string {
 	return cfg.addressSpace
 }
 
-func (cfg Config) Subnets() *subnets {
+func (cfg *Config) Subnets() *Subnets {
 	return cfg.subnets
 }
 
-func (cfg Config) VirtualMachine() *virtualMachine {
+func (cfg *Config) VirtualMachine() *VirtualMachine {
 	return cfg.virtualMachine
 }
 
-func (cfg Config) DatabaseAccount() *databaseAccount {
+func (cfg *Config) DatabaseAccount() *DatabaseAccount {
 	return cfg.databaseAccount
 }
 
-func (cfg Config) Ids() *ids {
+func (cfg *Config) Ids() *Ids {
 	return cfg.ids
 }
 
-func (rgn regions) Primary() *string {
+func (rgn *Regions) Primary() *string {
 	return rgn.primary
 }
 
-func (rgn regions) Secondary() *string {
+func (rgn *Regions) Secondary() *string {
 	return rgn.secondary
 }
 
-func (sbn subnets) VirtualMachine() *string {
+func (sbn *Subnets) VirtualMachine() *Subnet {
 	return sbn.virtualMachine
-
 }
 
-func (sbn subnets) MongoDB() *string {
+func (sbn *Subnets) MongoDB() *Subnet {
 	return sbn.mongoDB
 }
 
-func (img imageReference) Publisher() *string {
+func (sbn *Subnet) Postfix() *string {
+	return sbn.postfix
+}
+
+func (sbn *Subnet) AddressPrefix() *string {
+	return sbn.addressPrefix
+}
+
+func (img *ImageReference) Publisher() *string {
 	return img.publisher
 }
 
-func (img imageReference) Offer() *string {
+func (img *ImageReference) Offer() *string {
 	return img.offer
 }
 
-func (img imageReference) Sku() *string {
+func (img *ImageReference) Sku() *string {
 	return img.sku
 }
 
-func (img imageReference) Version() *string {
+func (img *ImageReference) Version() *string {
 	return img.version
 }
 
-func (vm virtualMachine) Size() *string {
+func (vm *VirtualMachine) Size() *string {
 	return vm.size
 }
 
-func (vm virtualMachine) StorageAccountType() *string {
+func (vm *VirtualMachine) StorageAccountType() *string {
 	return vm.storageAccountType
 }
 
-func (vm virtualMachine) ImageReference() *imageReference {
+func (vm *VirtualMachine) ImageReference() *ImageReference {
 	return vm.imageReference
 }
 
-func (db databaseAccount) Kind() *string {
+func (db *DatabaseAccount) Kind() *string {
 	return db.kind
 }
 
-func (db databaseAccount) ServerVersion() *string {
+func (db *DatabaseAccount) ServerVersion() *string {
 	return db.serverVersion
 }
 
-func (db databaseAccount) OfferType() *string {
+func (db *DatabaseAccount) OfferType() *string {
 	return db.offerType
 }
 
-func (db databaseAccount) BackupPolicyType() *string {
+func (db *DatabaseAccount) BackupPolicyType() *string {
 	return db.backupPolicyType
 }
 
-func (db databaseAccount) DefaultConsistencyLevel() *string {
+func (db *DatabaseAccount) DefaultConsistencyLevel() *string {
 	return db.defaultConsistencyLevel
 }
 
-func (db databaseAccount) Capabilities() []*string {
+func (db *DatabaseAccount) Capabilities() []*string {
 	return db.capabilities
 }
