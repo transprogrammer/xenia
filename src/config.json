@@ -1,12 +1,36 @@
 {
-    "subscriptionId": "8713d401-d857-426a-95ff-9ff08e7930da"
-    "projectName": "xenia",
-    "primaryRegion": "useast2",
-    "secondaryRegion": "uswest2",
-    "addressSpace": [
-      "10.0.0.0/16"
-    ],
-    "subnetPrefixes": [
-      "10.1.0.0/24"
+  "subscriptionId": "8713d401-d857-426a-95ff-9ff08e7930da",
+  "projectName": "xenia",
+  "region": {
+    "primary": "useast2",
+    "secondary": "uswest2"
+  },
+  "addressSpace": [
+    "10.0.0.0/16"
+  ],
+  "subnets": {
+    "virtualMachine": "10.1.0.0/24",
+    "mongoDB": "10.2.0.0/24"
+  },
+  "virtualMachine": {
+    "size": "Standard_B2ms",
+    "storageAccountType": "Standard_LRS",
+    "imageReference": {
+      "publisher": "Canonical",
+      "offer": "0001-com-ubuntu-server-focal",
+      "sku": "20_04-lts-gen2",
+      "version": "latest"
+    }
+  },
+  "databaseAccount": {
+    "kind": "MongoDB",
+    "serverVersion": "4.0",
+    "offerType": "Standard",
+    "backupPolicyType": "Continuous",
+    "defaultConsistencyLevel": "Eventual",
+    "capabilities": [
+      "disableRateLimitingResponses",
+      "enableServerless"
     ]
+  }
 }
