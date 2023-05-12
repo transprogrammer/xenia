@@ -1,12 +1,17 @@
-package config
+package main
 
 import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+
+	"github.com/aws/jsii-runtime-go"
 )
 
-const ConfigFile = "config.json"
+const ConfigFile = "Config.json"
+
+var Cfg Config = makeConfig()
+var Ids Id = makeIds()
 
 type Regions struct {
 	Primary   *string `json:"primary"`
@@ -55,71 +60,54 @@ type Config struct {
 	DatabaseAccount *DatabaseAccount `json:"databaseAccount"`
 }
 
-func MakeConfig() *Config {
-	config := makeConfig()
-	config := makeConfigFrom(config)
-	config.ids = makeIds()
-
-	return config
+type Id struct {
+	AzureRMProvider                *string
+	NamingModule                   *string
+	ResourceGroup                  *string
+	VirtualNetwork                 *string
+	Subnet                         *string
+	PublicIPAddress                *string
+	NetworkInterface               *string
+	NetworkInterfaceNSGAssociation *string
+	NetworkInterfaceASGAssociation *string
+	NetworkSecurityGroup           *string
+	ApplicationSecurityGroup       *string
 }
 
-func makeConfig() *config {
-	file, err := os.Open(ConfigFile)
-	if err != nil {
-		panic(err)
+func makeConfig() Config {
+	panik := func(err error) {
+		if err != nil {
+			panic(err)
+		}
 	}
+
+	file, err := os.Open(ConfigFile)
+	panik(err)
+
 	defer file.Close()
 
 	bytes, err := ioutil.ReadAll(file)
-	if err != nil {
-		panic(err)
-	}
+	panik(err)
 
-	var cfg config
+	var cfg Config
 	err = json.Unmarshal(bytes, &cfg)
-	if err != nil {
-		panic(err)
-	}
+	panik(err)
 
-	return &cfg
+	return cfg
 }
 
-func makeConfigFrom(jso *config) *Config {
-	return &Config{
-		subscriptionId: jso.SubscriptionId,
-		projectName:    jso.ProjectName,
-		regions: &Regions{
-			primary:   jso.Regions.Primary,
-			secondary: jso.Regions.Secondary,
-		},
-		addressSpace: jso.AddressSpace,
-		subnets: &Subnets{
-			virtualMachine: &Subnet{
-				postfix:       jso.Subnets.VirtualMachine.Postfix,
-				addressPrefix: jso.Subnets.VirtualMachine.AddressPrefix,
-			},
-			mongoDB: &Subnet{
-				postfix:       jso.Subnets.MongoDB.Postfix,
-				addressPrefix: jso.Subnets.MongoDB.AddressPrefix,
-			},
-		},
-		virtualMachine: &VirtualMachine{
-			size:               jso.VirtualMachine.Size,
-			storageAccountType: jso.VirtualMachine.StorageAccountType,
-			imageReference: &ImageReference{
-				publisher: jso.VirtualMachine.ImageReference.Publisher,
-				offer:     jso.VirtualMachine.ImageReference.Offer,
-				sku:       jso.VirtualMachine.ImageReference.Sku,
-				version:   jso.VirtualMachine.ImageReference.Version,
-			},
-		},
-		databaseAccount: &DatabaseAccount{
-			kind:                    jso.DatabaseAccount.Kind,
-			serverVersion:           jso.DatabaseAccount.ServerVersion,
-			offerType:               jso.DatabaseAccount.OfferType,
-			backupPolicyType:        jso.DatabaseAccount.BackupPolicyType,
-			defaultConsistencyLevel: jso.DatabaseAccount.DefaultConsistencyLevel,
-			capabilities:            jso.DatabaseAccount.Capabilities,
-		},
+func makeIds() Id {
+	return Id{
+		AzureRMProvider:                jsii.String("azurerm"),
+		NamingModule:                   jsii.String("naming"),
+		ResourceGroup:                  jsii.String("resource_group"),
+		VirtualNetwork:                 jsii.String("virtual_network"),
+		Subnet:                         jsii.String("subnet"),
+		PublicIPAddress:                jsii.String("public_ip_address"),
+		NetworkInterface:               jsii.String("network_interface"),
+		NetworkInterfaceNSGAssociation: jsii.String("network_interface_nsg_association"),
+		NetworkInterfaceASGAssociation: jsii.String("network_interface_asg_association"),
+		NetworkSecurityGroup:           jsii.String("network_security_group"),
+		ApplicationSecurityGroup:       jsii.String("application_security_group"),
 	}
 }
