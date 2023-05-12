@@ -13,35 +13,45 @@ import (
 	prov "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
 	ip "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/publicip"
 	rg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/resourcegroup"
+	vm "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualmachine"
 	vnet "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualnetwork"
 )
 
 var App tf.App = tf.NewApp(nil)
 var Stk tf.TerraformStack = tf.NewTerraformStack(App, Cfg.ProjectName)
 
+func makeNamingModule(suffixes []*string) naming.Naming {
+	return naming.NewNaming(Stk, Ids.NamingModule, &naming.NamingConfig{
+		Prefix:               &[]*string{Cfg.ProjectName},
+		UniqueIncludeNumbers: ii.Bool(false),
+		Suffix:               &suffixes,
+	})
+}
+
 var Nme naming.Naming = makeNamingModule([]*string{})
 
-var Rg rg.ResourceGroup = rg.NewResourceGroup(Stk, Ids.ResourceGroup, &rg.ResourceGroupConfig{
-	Name:     Nme.ResourceGroupOutput(),
-	Location: Cfg.Regions.Primary,
-},
+var Rg rg.ResourceGroup = rg.NewResourceGroup(Stk, Ids.ResourceGroup,
+	&rg.ResourceGroupConfig{
+		Name:     Nme.ResourceGroupOutput(),
+		Location: Cfg.Regions.Primary,
+	},
 )
 
-var Ip ip.PublicIp = ip.NewPublicIp(Stk, Ids.PublicIPAddress, &ip.PublicIpConfig{
-	Name:                 Nme.PublicIpOutput(),
-	Location:             Rg.Location(),
-	ResourceGroupName:    Rg.Name(),
-	Sku:                  ii.String("Basic"),
-	AllocationMethod:     ii.String("Dynamic"),
-	IpVersion:            ii.String("IPv4"),
-	DomainNameLabel:      Cfg.ProjectName,
-	IdleTimeoutInMinutes: ii.Number(4),
-})
+var Ip ip.PublicIp = ip.NewPublicIp(Stk, Ids.PublicIPAddress,
+	&ip.PublicIpConfig{
+		Name:                 Nme.PublicIpOutput(),
+		Location:             Rg.Location(),
+		ResourceGroupName:    Rg.Name(),
+		Sku:                  ii.String("Basic"),
+		AllocationMethod:     ii.String("Dynamic"),
+		IpVersion:            ii.String("IPv4"),
+		DomainNameLabel:      Cfg.ProjectName,
+		IdleTimeoutInMinutes: ii.Number(4),
+	},
+)
 
 // ???: Inline subnet too enable updating in-place. <>
 // SEE: https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deployment-modes#incremental-mode <>
-var VNet vnet.VirtualNetwork = makeVirtualNetwork()
-
 var mongoDBIndex = float64(0)
 var vmIndex = float64(1)
 
@@ -66,6 +76,7 @@ func makeVirtualNetwork() vnet.VirtualNetwork {
 	})
 }
 
+var VNet vnet.VirtualNetwork = makeVirtualNetwork()
 var MongoDBSubnet vnet.VirtualNetworkSubnetOutputReference = VNet.Subnet().Get(&mongoDBIndex)
 var VMSubnet vnet.VirtualNetworkSubnetOutputReference = VNet.Subnet().Get(&vmIndex)
 
@@ -116,13 +127,36 @@ var nicASGAssociation nicasg.NetworkInterfaceApplicationSecurityGroupAssociation
 	ApplicationSecurityGroupId: ASG.Id(),
 })
 
-func makeNamingModule(suffixes []*string) naming.Naming {
-	return naming.NewNaming(Stk, Ids.NamingModule, &naming.NamingConfig{
-		Prefix:               &[]*string{Cfg.ProjectName},
-		UniqueIncludeNumbers: ii.Bool(false),
-		Suffix:               &suffixes,
-	})
-}
+var VM vm.VirtualMachine = vm.NewVirtualMachine(Stk, Ids.VirtualMachine, &vm.VirtualMachineConfig{
+	Name:              Nme.VirtualMachineOutput(),
+	Location:          Cfg.Regions.Primary,
+	ResourceGroupName: Rg.Name(),
+	VmSize:            Cfg.VirtualMachine.Size,
+	StorageImageReference: &vm.VirtualMachineStorageImageReference{
+		Publisher: Cfg.VirtualMachine.Image.Publisher,
+		Offer:     Cfg.VirtualMachine.Image.Offer,
+		Sku:       Cfg.VirtualMachine.Image.Sku,
+		Version:   Cfg.VirtualMachine.Image.Version,
+	},
+	StorageOsDisk: &vm.VirtualMachineStorageOsDisk{
+		Name:            ii.String("osdisk"),
+		CreateOption:    ii.String("FromImage"),
+		ManagedDiskType: Cfg.VirtualMachine.StorageAccountType,
+	},
+	NetworkInterfaceIds: &[]*string{NIC.Id()},
+	OsProfile: &vm.VirtualMachineOsProfile{
+		ComputerName:  Nme.VirtualMachineOutput(),
+		AdminUsername: Cfg.VirtualMachine.AdminUsername,
+		AdminPassword: Cfg.VirtualMachine.SSHPublicKey,
+	},
+	OsProfileLinuxConfig: &vm.VirtualMachineOsProfileLinuxConfig{
+		DisablePasswordAuthentication: ii.Bool(true),
+		SshKeys: &vm.VirtualMachineOsProfileLinuxConfigSshKeys{
+			Path:    ii.String("/home/" + *Cfg.VirtualMachine.AdminUsername + "/.ssh/authorized_keys"),
+			KeyData: Cfg.VirtualMachine.SSHPublicKey,
+		},
+	},
+})
 
 func main() {
 	prov.NewAzurermProvider(Stk, Ids.AzureRMProvider, &prov.AzurermProviderConfig{
@@ -131,19 +165,4 @@ func main() {
 	})
 
 	App.Synth()
-
-	//makeVirtualMachine(Cfg, stk, nme, Rg, nic, vnet)
 }
-
-// func makeVirtualMachine(Cfg *Cfg.Config, Stk tf.TerraformStack, naming *naming.Naming, Rg Rg.ResourceGroup, nic *nic.NetworkInterface) *vm.VirtualMachine {
-// 	virtualMachine := vm.NewVirtualMachine(Stk, Cfg.Ids().VirtualMachine(), &vm.VirtualMachineConfig{
-// 		Name:              Nme.VirtualMachineOutput(),
-// 		Location:          Rg.Location(),
-// 		ResourceGroupName: Rg.Name(),
-//
-// 		NetworkInterfaceIds: []string{NIC.Id()},
-// 		VmSize:              ii.String("Standard_B1s"),
-//	}
-//
-// 	return &virtualMachine
-// }

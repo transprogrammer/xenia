@@ -28,7 +28,7 @@ type Subnets struct {
 	MongoDB        *Subnet `json:"mongoDB"`
 }
 
-type ImageReference struct {
+type Image struct {
 	Publisher *string `json:"publisher"`
 	Offer     *string `json:"offer"`
 	Sku       *string `json:"sku"`
@@ -36,9 +36,11 @@ type ImageReference struct {
 }
 
 type VirtualMachine struct {
-	Size               *string         `json:"size"`
-	StorageAccountType *string         `json:"storageAccountType"`
-	ImageReference     *ImageReference `json:"imageReference"`
+	Size               *string `json:"size"`
+	StorageAccountType *string `json:"storageAccountType"`
+	Image              *Image  `json:"imageReference"`
+	AdminUsername      *string `json:"adminUsername"`
+	SSHPublicKey       *string `json:"sshPublicKey"`
 }
 
 type DatabaseAccount struct {
@@ -72,6 +74,7 @@ type Id struct {
 	NetworkInterfaceASGAssociation *string
 	NetworkSecurityGroup           *string
 	ApplicationSecurityGroup       *string
+	VirtualMachine                 *string
 }
 
 func makeConfig() Config {
@@ -109,5 +112,6 @@ func makeIds() Id {
 		NetworkInterfaceASGAssociation: jsii.String("network_interface_asg_association"),
 		NetworkSecurityGroup:           jsii.String("network_security_group"),
 		ApplicationSecurityGroup:       jsii.String("application_security_group"),
+		VirtualMachine:                 jsii.String("virtual_machine"),
 	}
 }
