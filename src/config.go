@@ -54,7 +54,7 @@ type Config struct {
 	SubscriptionId  *string          `json:"subscriptionId"`
 	ProjectName     *string          `json:"projectName"`
 	Regions         *Regions         `json:"regions"`
-	AddressSpace    []*string        `json:"addressSpace"`
+	AddressSpace    *[]*string       `json:"addressSpace"`
 	Subnets         *Subnets         `json:"subnets"`
 	VirtualMachine  *VirtualMachine  `json:"virtualMachine"`
 	DatabaseAccount *DatabaseAccount `json:"databaseAccount"`
