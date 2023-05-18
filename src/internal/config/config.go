@@ -8,7 +8,7 @@ import (
 
 const ConfigFile = "Config.json"
 
-var Cfg Config = makeConfig()
+var Config Configuration = MakeConfig()
 
 type Regions struct {
 	Primary   *string `json:"primary"`
@@ -49,7 +49,7 @@ type DatabaseAccount struct {
 	Capabilities            []*string `json:"capabilities"`
 }
 
-type Config struct {
+type Configuration struct {
 	SubscriptionId  *string          `json:"subscriptionId"`
 	ProjectName     *string          `json:"projectName"`
 	Regions         *Regions         `json:"regions"`
@@ -59,24 +59,25 @@ type Config struct {
 	DatabaseAccount *DatabaseAccount `json:"databaseAccount"`
 }
 
-func makeConfig() Config {
-	panik := func(err error) {
-		if err != nil {
-			panic(err)
-		}
-	}
+func MakeConfig() Configuration {
 
 	file, err := os.Open(ConfigFile)
-	panik(err)
+	if err != nil {
+		panic(err)
+	}
 
 	defer file.Close()
 
 	bytes, err := ioutil.ReadAll(file)
-	panik(err)
+	if err != nil {
+		panic(err)
+	}
 
-	var cfg Config
-	err = json.Unmarshal(bytes, &cfg)
-	panik(err)
+	var config Configuration
+	err = json.Unmarshal(bytes, &config)
+	if err != nil {
+		panic(err)
+	}
 
-	return cfg
+	return config
 }

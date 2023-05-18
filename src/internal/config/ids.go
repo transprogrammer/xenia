@@ -4,9 +4,9 @@ import (
 	"github.com/aws/jsii-runtime-go"
 )
 
-var Id Ids = makeIds()
+var Ids Identifiers = makeIds()
 
-type Ids struct {
+type Identifiers struct {
 	ApplicationSecurityGroup         *string
 	AzureRMProvider                  *string
 	CosmosDBAccount                  *string
@@ -26,8 +26,8 @@ type Ids struct {
 	VirtualNetwork                   *string
 }
 
-func makeIds() Ids {
-	return Ids{
+func makeIds() Identifiers {
+	return Identifiers{
 		ApplicationSecurityGroup:         jsii.String("application_security_group"),
 		AzureRMProvider:                  jsii.String("azurerm"),
 		CosmosDBAccount:                  jsii.String("cosmosdb_account"),

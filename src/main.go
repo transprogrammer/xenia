@@ -5,9 +5,12 @@ import (
 
 	ii "github.com/aws/jsii-runtime-go"
 	tf "github.com/hashicorp/terraform-cdk-go/cdktf"
-	"github.com/transprogrammer/xenia/generated/naming"
+	c "github.com/transprogrammer/xenia/internal/config"
+	"github.com/transprogrammer/xenia/internal/mongodb"
+	n "github.com/transprogrammer/xenia/internal/naming"
 
 	asg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/applicationsecuritygroup"
+
 	dbacct "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/cosmosdbaccount"
 	nic "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networkinterface"
 	nicasg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networkinterfaceapplicationsecuritygroupassociation"
@@ -23,28 +26,37 @@ import (
 	vnet "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualnetwork"
 )
 
-var App tf.App = tf.NewApp(nil)
-var Stk tf.TerraformStack = tf.NewTerraformStack(App, Cfg.ProjectName)
+func main() {
+	app := tf.NewApp(nil)
+	stack := tf.NewTerraformStack(app, c.Config.ProjectName)
 
-func makeNamingModule(suffixes []*string) naming.Naming {
-	return naming.NewNaming(Stk, Ids.NamingModule, &naming.NamingConfig{
-		Prefix:               &[]*string{Cfg.ProjectName},
-		UniqueIncludeNumbers: ii.Bool(false),
-		Suffix:               &suffixes,
+	NewAzureRMProvider(stack)
+
+	naming := n.NewNamingModule(stack, nil)
+	rg := NewResourceGroup(stack, naming)
+
+	mongodb.NewMongoDBStack(stack, naming, rg)
+
+	app.Synth()
+}
+
+func NewAzureRMProvider(stack tf.Stack) *prov.AzurermProvider {
+	config := &prov.AzurermProviderConfig{
+		Features:       &prov.AzurermProviderFeatures{},
+		SubscriptionId: c.Config.SubscriptionId,
+	}
+
+	return prov.NewAzurermProvider(stack, c.Ids.AzureRMProvider, config)
+}
+
+func NewResourceGroup(stack tf.Stack, naming *n.NamingModule) rg.ResourceGroup {
+	return rg.NewResourceGroup(stack, c.Ids.ResourceGroup, &rg.ResourceGroupConfig{
+		Name:     n.ResourceGroupOutput(),
+		Location: c.Config.Regions.Primary,
 	})
 }
 
-var Nme naming.Naming = makeNamingModule([]*string{})
-var MongoNaming naming.Naming = makeNamingModule([]*string{ii.String("mongo")})
-
-var Rg rg.ResourceGroup = rg.NewResourceGroup(Stk, Ids.ResourceGroup,
-	&rg.ResourceGroupConfig{
-		Name:     Nme.ResourceGroupOutput(),
-		Location: Cfg.Regions.Primary,
-	},
-)
-
-var Ip ip.PublicIp = ip.NewPublicIp(Stk, Ids.PublicIPAddress,
+var Ip ip.PublicIp = ip.NewPublicIp(stack, Ids.PublicIPAddress,
 	&ip.PublicIpConfig{
 		Name:                 Nme.PublicIpOutput(),
 		Location:             Rg.Location(),
@@ -62,19 +74,19 @@ var Ip ip.PublicIp = ip.NewPublicIp(Stk, Ids.PublicIPAddress,
 var mongoDBIndex = float64(0)
 var vmIndex = float64(1)
 
-func makeVirtualNetwork() vnet.VirtualNetwork {
+func NewVirtualNetwork() vnet.VirtualNetwork {
 	subnets := []vnet.VirtualNetworkSubnet{}
 	subnets[int(mongoDBIndex)] = vnet.VirtualNetworkSubnet{
-		Name:          (makeNamingModule([]*string{Cfg.Subnets.MongoDB.Postfix})).SubnetOutput(),
+		Name:          (NewNamingModule([]*string{Cfg.Subnets.MongoDB.Postfix})).SubnetOutput(),
 		AddressPrefix: Cfg.Subnets.MongoDB.AddressPrefix,
 	}
 
 	subnets[int(vmIndex)] = vnet.VirtualNetworkSubnet{
-		Name:          (makeNamingModule([]*string{Cfg.Subnets.MongoDB.Postfix})).SubnetOutput(),
+		Name:          (NewNamingModule([]*string{Cfg.Subnets.MongoDB.Postfix})).SubnetOutput(),
 		AddressPrefix: Cfg.Subnets.VirtualMachine.AddressPrefix,
 	}
 
-	return vnet.NewVirtualNetwork(Stk, Ids.VirtualNetwork, &vnet.VirtualNetworkConfig{
+	return vnet.NewVirtualNetwork(stack, Ids.VirtualNetwork, &vnet.VirtualNetworkConfig{
 		Name:              Nme.VirtualNetworkOutput(),
 		AddressSpace:      Cfg.AddressSpace,
 		Location:          Rg.Location(),
@@ -83,11 +95,11 @@ func makeVirtualNetwork() vnet.VirtualNetwork {
 	})
 }
 
-var VNet vnet.VirtualNetwork = makeVirtualNetwork()
+var VNet vnet.VirtualNetwork = NewVirtualNetwork()
 var MongoDBSubnet vnet.VirtualNetworkSubnetOutputReference = VNet.Subnet().Get(&mongoDBIndex)
 var VMSubnet vnet.VirtualNetworkSubnetOutputReference = VNet.Subnet().Get(&vmIndex)
 
-var NSG nsg.NetworkSecurityGroup = nsg.NewNetworkSecurityGroup(Stk, Ids.NetworkSecurityGroup, &nsg.NetworkSecurityGroupConfig{
+var NSG nsg.NetworkSecurityGroup = nsg.NewNetworkSecurityGroup(stack, Ids.NetworkSecurityGroup, &nsg.NetworkSecurityGroupConfig{
 	Name:              Nme.NetworkSecurityGroupOutput(),
 	Location:          Rg.Location(),
 	ResourceGroupName: Rg.Name(),
@@ -105,13 +117,13 @@ var NSG nsg.NetworkSecurityGroup = nsg.NewNetworkSecurityGroup(Stk, Ids.NetworkS
 	},
 })
 
-var ASG asg.ApplicationSecurityGroup = asg.NewApplicationSecurityGroup(Stk, Ids.ApplicationSecurityGroup, &asg.ApplicationSecurityGroupConfig{
+var ASG asg.ApplicationSecurityGroup = asg.NewApplicationSecurityGroup(stack, Ids.ApplicationSecurityGroup, &asg.ApplicationSecurityGroupConfig{
 	Name:              Nme.ApplicationSecurityGroupOutput(),
 	Location:          Rg.Location(),
 	ResourceGroupName: Rg.Name(),
 })
 
-var NIC nic.NetworkInterface = nic.NewNetworkInterface(Stk, Ids.NetworkInterface, &nic.NetworkInterfaceConfig{
+var NIC nic.NetworkInterface = nic.NewNetworkInterface(stack, Ids.NetworkInterface, &nic.NetworkInterfaceConfig{
 	Name:              Nme.NetworkInterfaceOutput(),
 	Location:          Rg.Location(),
 	ResourceGroupName: Rg.Name(),
@@ -124,17 +136,17 @@ var NIC nic.NetworkInterface = nic.NewNetworkInterface(Stk, Ids.NetworkInterface
 	},
 })
 
-var nicNSGAssociation nicnsg.NetworkInterfaceSecurityGroupAssociation = nicnsg.NewNetworkInterfaceSecurityGroupAssociation(Stk, Ids.NetworkInterfaceNSGAssociation, &nicnsg.NetworkInterfaceSecurityGroupAssociationConfig{
+var nicNSGAssociation nicnsg.NetworkInterfaceSecurityGroupAssociation = nicnsg.NewNetworkInterfaceSecurityGroupAssociation(stack, Ids.NetworkInterfaceNSGAssociation, &nicnsg.NetworkInterfaceSecurityGroupAssociationConfig{
 	NetworkInterfaceId:     NIC.Id(),
 	NetworkSecurityGroupId: NSG.Id(),
 })
 
-var nicASGAssociation nicasg.NetworkInterfaceApplicationSecurityGroupAssociation = nicasg.NewNetworkInterfaceApplicationSecurityGroupAssociation(Stk, Ids.NetworkInterfaceASGAssociation, &nicasg.NetworkInterfaceApplicationSecurityGroupAssociationConfig{
+var nicASGAssociation nicasg.NetworkInterfaceApplicationSecurityGroupAssociation = nicasg.NewNetworkInterfaceApplicationSecurityGroupAssociation(stack, Ids.NetworkInterfaceASGAssociation, &nicasg.NetworkInterfaceApplicationSecurityGroupAssociationConfig{
 	NetworkInterfaceId:         NIC.Id(),
 	ApplicationSecurityGroupId: ASG.Id(),
 })
 
-var VM vm.VirtualMachine = vm.NewVirtualMachine(Stk, Ids.VirtualMachine, &vm.VirtualMachineConfig{
+var VM vm.VirtualMachine = vm.NewVirtualMachine(stack, Ids.VirtualMachine, &vm.VirtualMachineConfig{
 	Name:              Nme.VirtualMachineOutput(),
 	Location:          Cfg.Regions.Primary,
 	ResourceGroupName: Rg.Name(),
@@ -165,7 +177,7 @@ var VM vm.VirtualMachine = vm.NewVirtualMachine(Stk, Ids.VirtualMachine, &vm.Vir
 	},
 })
 
-var dbAccount dbacct.CosmosdbAccount = dbacct.NewCosmosdbAccount(Stk, Ids.CosmosDBAccount, &dbacct.CosmosdbAccountConfig{
+var dbAccount dbacct.CosmosdbAccount = dbacct.NewCosmosdbAccount(stack, Ids.CosmosDBAccount, &dbacct.CosmosdbAccountConfig{
 	Name:                       Nme.CosmosdbAccountOutput(),
 	Location:                   Cfg.Regions.Primary,
 	ResourceGroupName:          Rg.Name(),
@@ -197,7 +209,7 @@ var dbAccount dbacct.CosmosdbAccount = dbacct.NewCosmosdbAccount(Stk, Ids.Cosmos
 // TODO: Add sg assocs <>
 // TODO: Hardening <>
 
-var PrivateEndpoint pe.PrivateEndpoint = pe.NewPrivateEndpoint(Stk, Ids.PrivateEndpoint, &pe.PrivateEndpointConfig{
+var PrivateEndpoint pe.PrivateEndpoint = pe.NewPrivateEndpoint(stack, Ids.PrivateEndpoint, &pe.PrivateEndpointConfig{
 	Name:              Nme.PrivateEndpointOutput(),
 	Location:          Cfg.Regions.Primary,
 	ResourceGroupName: Rg.Name(),
@@ -209,24 +221,15 @@ var PrivateEndpoint pe.PrivateEndpoint = pe.NewPrivateEndpoint(Stk, Ids.PrivateE
 	},
 })
 
-var PrivateDNSZone pdnsz.PrivateDnsZone = pdnsz.NewPrivateDnsZone(Stk, Ids.PrivateDNSZone, &pdnsz.PrivateDnsZoneConfig{
+var PrivateDNSZone pdnsz.PrivateDnsZone = pdnsz.NewPrivateDnsZone(stack, Ids.PrivateDNSZone, &pdnsz.PrivateDnsZoneConfig{
 	Name:              ii.String("privatelink.mongo.cosmos.azure.com"),
 	ResourceGroupName: Rg.Name(),
 })
 
-var PrivateDNSZoneVirtualNetworkLink pdnszvnl.PrivateDnsZoneVirtualNetworkLink = pdnszvnl.NewPrivateDnsZoneVirtualNetworkLink(Stk, Ids.PrivateDNSZoneVirtualNetworkLink, &pdnszvnl.PrivateDnsZoneVirtualNetworkLinkConfig{
+var PrivateDNSZoneVirtualNetworkLink pdnszvnl.PrivateDnsZoneVirtualNetworkLink = pdnszvnl.NewPrivateDnsZoneVirtualNetworkLink(stack, Ids.PrivateDNSZoneVirtualNetworkLink, &pdnszvnl.PrivateDnsZoneVirtualNetworkLinkConfig{
 	Name:                ii.String(fmt.Sprintf("%s-vnetlink", *MongoNaming.PrivateDnsZoneOutput())),
 	ResourceGroupName:   Rg.Name(),
 	PrivateDnsZoneName:  PrivateDNSZone.Name(),
 	VirtualNetworkId:    VNet.Id(),
 	RegistrationEnabled: ii.Bool(true),
 })
-
-func main() {
-	prov.NewAzurermProvider(Stk, Ids.AzureRMProvider, &prov.AzurermProviderConfig{
-		Features:       &prov.AzurermProviderFeatures{},
-		SubscriptionId: Cfg.SubscriptionId,
-	})
-
-	App.Synth()
-}
