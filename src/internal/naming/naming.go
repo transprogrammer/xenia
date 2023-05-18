@@ -1,4 +1,4 @@
-package main
+package naming
 
 import (
 	ii "github.com/aws/jsii-runtime-go"
@@ -6,6 +6,8 @@ import (
 	"github.com/transprogrammer/xenia/generated/naming"
 	cfg "github.com/transprogrammer/xenia/internal/config"
 )
+
+type NamingModule naming.Naming
 
 func NewNamingModule(stack cdktf.TerraformStack, suffixes *[]*string) naming.Naming {
 
