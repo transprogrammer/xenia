@@ -1,9 +1,11 @@
-package main
+package mongodb
 
 import (
 	"fmt"
 
+	"github.com/aws/constructs-go/constructs/v10"
 	ii "github.com/aws/jsii-runtime-go"
+	"github.com/hashicorp/terraform-cdk-go/cdktf"
 	"github.com/transprogrammer/xenia/generated/naming"
 
 	asg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/applicationsecuritygroup"
@@ -21,6 +23,12 @@ import (
 	vm "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualmachine"
 	vnet "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualnetwork"
 )
+
+func NewMongoDBStack(scopes constructs.Construct, name string) *MongoDBStack {
+	stack := cdktf.NewTerraformStack(scopes, &name)
+
+	m
+}
 
 func makeNamingModule(suffixes []*string) naming.Naming {
 	return naming.NewNaming(Stk, Ids.NamingModule, &naming.NamingConfig{
