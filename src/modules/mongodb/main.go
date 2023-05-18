@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	ii "github.com/aws/jsii-runtime-go"
-	tf "github.com/hashicorp/terraform-cdk-go/cdktf"
 	"github.com/transprogrammer/xenia/generated/naming"
 
 	asg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/applicationsecuritygroup"
@@ -22,9 +21,6 @@ import (
 	vm "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualmachine"
 	vnet "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualnetwork"
 )
-
-var App tf.App = tf.NewApp(nil)
-var Stk tf.TerraformStack = tf.NewTerraformStack(App, Cfg.ProjectName)
 
 func makeNamingModule(suffixes []*string) naming.Naming {
 	return naming.NewNaming(Stk, Ids.NamingModule, &naming.NamingConfig{
