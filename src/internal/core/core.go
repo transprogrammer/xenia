@@ -21,10 +21,8 @@ import (
 	tf "github.com/hashicorp/terraform-cdk-go/cdktf"
 )
 
-type VirtualNetwork vnet.VirtualNetwork
-
 func MakeCoreStack(app tf.App) tf.TerraformStack {
-	stackName := fmt.Sprintf("%s-core", x.Config.ProjectName)
+	stackName := fmt.Sprintf("%s-core", *x.Config.ProjectName)
 
 	stack := tf.NewTerraformStack(app, &stackName)
 
@@ -34,17 +32,17 @@ func MakeCoreStack(app tf.App) tf.TerraformStack {
 	resourceGroup := NewResourceGroup(stack, naming)
 
 	publicIP := NewPublicIP(stack, naming, resourceGroup)
-	virtualNetwork := NewVirtualNetwork(stack, naming, resourceGroup)
+	virtualNetwork := VirtualNetwork{NewVirtualNetwork(stack, naming, resourceGroup)}
 
 	applicationSecurityGroup := NewApplicationSecurityGroup(stack, naming, resourceGroup)
-	networkSecurityGroup := NewNetworkSecurityGroup(stack, naming, resourceGroup, applicationSecurityGroup)
+	networkSecurityGroup := NewNetworkSecurityGroup(stack, naming, resourceGroup)
 
 	networkInterface := NewNetworkInterface(stack, naming, resourceGroup, virtualNetwork, publicIP)
 	NewNICASGAssocation(stack, networkInterface, applicationSecurityGroup)
 	NewNICNSGAssocation(stack, networkInterface, networkSecurityGroup)
 
-	privateDNSZone := NewPrivateDNSZone(stack, naming, resourceGroup, virtualNetwork)
-	NewDNSZoneLink(stack, privateDNSZone, virtualNetwork)
+	privateDNSZone := NewPrivateDNSZone(stack, resourceGroup)
+	NewDNSZoneVNetLink(stack, naming, resourceGroup, privateDNSZone, virtualNetwork)
 
 	return stack
 }
@@ -115,12 +113,16 @@ func NewVirtualNetwork(stack tf.TerraformStack, naming n.NamingModule, resourceG
 	return vnet.NewVirtualNetwork(stack, x.Ids.VirtualNetwork, &input)
 }
 
-func MongoDBSubnet(virtualNetwork vnet.VirtualNetwork) vnet.VirtualNetworkSubnetOutputReference {
+type VirtualNetwork struct {
+	vnet.VirtualNetwork
+}
+
+func (virtualNetwork VirtualNetwork) mongoDBSubnet() vnet.VirtualNetworkSubnetOutputReference {
 	index := float64(MongoDBSubnetIndex)
 	return virtualNetwork.Subnet().Get(&index)
 }
 
-func VirtualMachineSubnet(virtualNetwork vnet.VirtualNetwork) vnet.VirtualNetworkSubnetOutputReference {
+func (virtualNetwork VirtualNetwork) VirtualMachineSubnet() vnet.VirtualNetworkSubnetOutputReference {
 	index := float64(VirtualMachineSubnetIndex)
 	return virtualNetwork.Subnet().Get(&index)
 }
@@ -157,7 +159,7 @@ func NewApplicationSecurityGroup(stack tf.TerraformStack, naming n.NamingModule,
 	return asg.NewApplicationSecurityGroup(stack, x.Ids.ApplicationSecurityGroup, &input)
 }
 
-func NewNetworkInterface(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, virtualNetwork vnet.VirtualNetwork, publicIp ip.PublicIp) nic.NetworkInterface {
+func NewNetworkInterface(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, virtualNetwork VirtualNetwork, publicIp ip.PublicIp) nic.NetworkInterface {
 	input := nic.NetworkInterfaceConfig{
 		Name:              naming.NetworkInterfaceOutput(),
 		Location:          x.Config.Regions.Primary,
@@ -166,18 +168,13 @@ func NewNetworkInterface(stack tf.TerraformStack, naming n.NamingModule, resourc
 		IpConfiguration: nic.NetworkInterfaceIpConfiguration{
 			Name:              jsii.String("ipconfig"),
 			Primary:           jsii.Bool(true),
-			SubnetId:          VirtualMachineSubnet(virtualNetwork).Id(),
+			SubnetId:          virtualNetwork.VirtualMachineSubnet().Id(),
 			PublicIpAddressId: publicIp.Id(),
 		},
 	}
 
 	return nic.NewNetworkInterface(stack, x.Ids.NetworkInterface, &input)
 }
-
-var nicASGAssociation nicasg.NetworkInterfaceApplicationSecurityGroupAssociation = nicasg.NewNetworkInterfaceApplicationSecurityGroupAssociation(stack, Ids.NetworkInterfaceASGAssociation, &nicasg.NetworkInterfaceApplicationSecurityGroupAssociationConfig{
-	NetworkInterfaceId:         NIC.Id(),
-	ApplicationSecurityGroupId: ASG.Id(),
-})
 
 func NewNICASGAssocation(stack tf.TerraformStack, networkInterface nic.NetworkInterface, applicationSecurityGroup asg.ApplicationSecurityGroup) nicasg.NetworkInterfaceApplicationSecurityGroupAssociation {
 	input := nicasg.NetworkInterfaceApplicationSecurityGroupAssociationConfig{
@@ -197,9 +194,9 @@ func NewNICNSGAssocation(stack tf.TerraformStack, networkInterface nic.NetworkIn
 	return nicnsg.NewNetworkInterfaceSecurityGroupAssociation(stack, x.Ids.NetworkInterfaceNSGAssociation, &input)
 }
 
-func NewPrivateDNSZone(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) dns.PrivateDnsZone {
+func NewPrivateDNSZone(stack tf.TerraformStack, resourceGroup rg.ResourceGroup) dns.PrivateDnsZone {
 	input := dns.PrivateDnsZoneConfig{
-		Name:              naming.PrivateDnsZoneOutput(),
+		Name:              jsii.String("privatelink.mongo.cosmos.azure.com"),
 		ResourceGroupName: resourceGroup.Name(),
 	}
 
@@ -207,10 +204,10 @@ func NewPrivateDNSZone(stack tf.TerraformStack, naming n.NamingModule, resourceG
 }
 
 func NewDNSZoneVNetLink(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, privateDnsZone dns.PrivateDnsZone, virtualNetwork vnet.VirtualNetwork) dnsl.PrivateDnsZoneVirtualNetworkLink {
-	name := fmt.Sprintf("%s-%s", naming.PrivateDnsZoneVirtualNetworkLinkOutput()
+	name := fmt.Sprintf("%-vnetlink", naming.PrivateDnsZoneOutput())
 
 	input := dnsl.PrivateDnsZoneVirtualNetworkLinkConfig{
-		Name:                naming.PrivateDnsZoneVirtualNetworkLinkOutput(),
+		Name:                &name,
 		ResourceGroupName:   resourceGroup.Name(),
 		PrivateDnsZoneName:  privateDnsZone.Name(),
 		VirtualNetworkId:    virtualNetwork.Id(),
