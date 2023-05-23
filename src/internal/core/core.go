@@ -21,12 +21,12 @@ import (
 	tf "github.com/hashicorp/terraform-cdk-go/cdktf"
 )
 
-func MakeCoreStack(app tf.App) tf.TerraformStack {
+func MakeCoreStack(app tf.App, providerFunc func(tf.TerraformStack) prv.AzurermProvider) tf.TerraformStack {
 	stackName := fmt.Sprintf("%s-core", *x.Config.ProjectName)
 
 	stack := tf.NewTerraformStack(app, &stackName)
 
-	NewAzureRMProvider(stack)
+	providerFunc(stack)
 
 	naming := n.NewNamingModule(stack, nil)
 	resourceGroup := NewResourceGroup(stack, naming)
@@ -45,15 +45,6 @@ func MakeCoreStack(app tf.App) tf.TerraformStack {
 	NewDNSZoneVNetLink(stack, naming, resourceGroup, privateDNSZone, virtualNetwork)
 
 	return stack
-}
-
-func NewAzureRMProvider(stack tf.TerraformStack) prv.AzurermProvider {
-	input := prv.AzurermProviderConfig{
-		Features:       &prv.AzurermProviderFeatures{},
-		SubscriptionId: x.Config.SubscriptionId,
-	}
-
-	return prv.NewAzurermProvider(stack, x.Ids.AzureRMProvider, &input)
 }
 
 func NewResourceGroup(stack tf.TerraformStack, naming n.NamingModule) rg.ResourceGroup {

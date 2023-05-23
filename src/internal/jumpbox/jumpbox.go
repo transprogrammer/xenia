@@ -1,6 +1,23 @@
 package jumpbox
 
-import "github.com/aws/jsii-runtime-go"
+import (
+	"fmt"
+
+	"github.com/aws/jsii-runtime-go"
+	prv "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
+	tf "github.com/hashicorp/terraform-cdk-go/cdktf"
+	x "github.com/transprogrammer/xenia/internal/config"
+)
+
+func NewJumpboxStack(app tf.App, providerFunc func(tf.TerraformStack) prv.AzurermProvider) tf.TerraformStack {
+	stackName := fmt.Sprintf("%s-jumpbox", *x.Config.ProjectName)
+
+	stack := tf.NewTerraformStack(app, &stackName)
+
+	providerFunc(stack)
+
+	return stack
+}
 
 var VM vm.VirtualMachine = vm.NewVirtualMachine(stack, Ids.VirtualMachine, &vm.VirtualMachineConfig{
 	Name:              Nme.VirtualMachineOutput(),
