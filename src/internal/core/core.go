@@ -3,9 +3,12 @@ package core
 import (
 	"fmt"
 
+	p "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
+	gn "github.com/transprogrammer/xenia/generated/naming"
 	x "github.com/transprogrammer/xenia/internal/config"
 	n "github.com/transprogrammer/xenia/internal/naming"
 
+	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 	asg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/applicationsecuritygroup"
 	nic "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networkinterface"
@@ -14,37 +17,53 @@ import (
 	nsg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networksecuritygroup"
 	dns "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/privatednszone"
 	dnsl "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/privatednszonevirtualnetworklink"
-	prv "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
 	ip "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/publicip"
 	rg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/resourcegroup"
 	vnet "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualnetwork"
 	tf "github.com/hashicorp/terraform-cdk-go/cdktf"
 )
 
-func MakeCoreStack(app tf.App, providerFunc func(tf.TerraformStack) prv.AzurermProvider) tf.TerraformStack {
+type CoreStack struct {
+	MongoDBNaming  gn.Naming
+	JumpboxNaming  gn.Naming
+	PublicIP       ip.PublicIp
+	VirtualNetwork vnet.VirtualNetwork
+}
+
+func MakeCoreStack(scope constructs.Construct) CoreStack {
 	stackName := fmt.Sprintf("%s-core", *x.Config.ProjectName)
 
-	stack := tf.NewTerraformStack(app, &stackName)
+	stack := tf.NewTerraformStack(scope, &stackName)
 
-	providerFunc(stack)
+	NewAzureRMProvider(stack)
 
-	naming := n.NewNamingModule(stack, nil)
+	naming := n.NewNamingModule(stack, []string{"xenia", "core"})
+	mongoDBNaming := n.NewNamingModule(stack, []string{"xenia", "mongodb"})
+	jumpboxNaming := n.NewNamingModule(stack, []string{"xenia", "jumpbox"})
+
 	resourceGroup := NewResourceGroup(stack, naming)
 
 	publicIP := NewPublicIP(stack, naming, resourceGroup)
-	virtualNetwork := VirtualNetwork{NewVirtualNetwork(stack, naming, resourceGroup)}
-
-	applicationSecurityGroup := NewApplicationSecurityGroup(stack, naming, resourceGroup)
-	networkSecurityGroup := NewNetworkSecurityGroup(stack, naming, resourceGroup)
-
-	networkInterface := NewNetworkInterface(stack, naming, resourceGroup, virtualNetwork, publicIP)
-	NewNICASGAssocation(stack, networkInterface, applicationSecurityGroup)
-	NewNICNSGAssocation(stack, networkInterface, networkSecurityGroup)
+	virtualNetwork := VirtualNetwork{NewVirtualNetwork(stack, naming, mongoDBNaming, jumpboxNaming, resourceGroup)}
 
 	privateDNSZone := NewPrivateDNSZone(stack, resourceGroup)
 	NewDNSZoneVNetLink(stack, naming, resourceGroup, privateDNSZone, virtualNetwork)
 
-	return stack
+	return CoreStack{
+		MongoDBNaming:  mongoDBNaming,
+		JumpboxNaming:  jumpboxNaming,
+		PublicIP:       publicIP,
+		VirtualNetwork: virtualNetwork,
+	}
+}
+
+func NewAzureRMProvider(stack tf.TerraformStack) p.AzurermProvider {
+	input := p.AzurermProviderConfig{
+		Features:       &p.AzurermProviderFeatures{},
+		SubscriptionId: x.Config.SubscriptionId,
+	}
+
+	return p.NewAzurermProvider(stack, x.Ids.AzureRMProvider, &input)
 }
 
 func NewResourceGroup(stack tf.TerraformStack, naming n.NamingModule) rg.ResourceGroup {
@@ -77,10 +96,7 @@ func NewPublicIP(stack tf.TerraformStack, naming n.NamingModule, group rg.Resour
 const MongoDBSubnetIndex = 0
 const VirtualMachineSubnetIndex = 1
 
-func NewVirtualNetwork(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) vnet.VirtualNetwork {
-
-	mongoDBNaming := n.NewNamingModule(stack, &[]*string{x.Config.Subnets.MongoDB.Postfix})
-	virtualMachineNaming := n.NewNamingModule(stack, &[]*string{x.Config.Subnets.VirtualMachine.Postfix})
+func NewVirtualNetwork(stack tf.TerraformStack, naming n.NamingModule, mongoDBNaming n.NamingModule, jumpboxNaming n.NamingModule, resourceGroup rg.ResourceGroup) vnet.VirtualNetwork {
 
 	subnets := []vnet.VirtualNetworkSubnet{}
 	subnets[MongoDBSubnetIndex] = vnet.VirtualNetworkSubnet{
@@ -89,7 +105,7 @@ func NewVirtualNetwork(stack tf.TerraformStack, naming n.NamingModule, resourceG
 	}
 
 	subnets[VirtualMachineSubnetIndex] = vnet.VirtualNetworkSubnet{
-		Name:          virtualMachineNaming.SubnetOutput(),
+		Name:          jumpboxNaming.SubnetOutput(),
 		AddressPrefix: x.Config.Subnets.VirtualMachine.AddressPrefix,
 	}
 

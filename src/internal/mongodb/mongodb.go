@@ -13,10 +13,9 @@ import (
 	pdnszvnl "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/privatednszonevirtualnetworklink"
 	pe "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/privateendpoint"
 	prov "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
-	rg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/resourcegroup"
 )
 
-func NewMongoDBStack(scopes constructs.Construct, naming naming.Module, rg rg.ResourceGroup) *MongoDBStack {
+func NewMongoDBStack(scopes constructs.Construct, coreStack CoreStack) {
 	stack := cdktf.NewTerraformStack(scopes, &name)
 
 	m
