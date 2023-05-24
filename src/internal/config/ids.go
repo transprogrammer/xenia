@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/aws/jsii-runtime-go"
+	i "github.com/aws/jsii-runtime-go"
 )
 
 var Ids Identifiers = makeIds()
@@ -28,22 +28,22 @@ type Identifiers struct {
 
 func makeIds() Identifiers {
 	return Identifiers{
-		ApplicationSecurityGroup:         jsii.String("application_security_group"),
-		AzureRMProvider:                  jsii.String("azurerm"),
-		CosmosDBAccount:                  jsii.String("cosmosdb_account"),
-		NamingModule:                     jsii.String("naming"),
-		NetworkInterface:                 jsii.String("network_interface"),
-		NetworkInterfaceASGAssociation:   jsii.String("network_interface_asg_association"),
-		NetworkInterfaceNSGAssociation:   jsii.String("network_interface_nsg_association"),
-		NetworkSecurityGroup:             jsii.String("network_security_group"),
-		PrivateDNSZone:                   jsii.String("private_dns_zone"),
-		PrivateDNSZoneGroup:              jsii.String("private_dns_zone_group"),
-		PrivateDNSZoneVirtualNetworkLink: jsii.String("private_dns_zone_virtual_network_link"),
-		PrivateEndpoint:                  jsii.String("private_endpoint"),
-		PublicIPAddress:                  jsii.String("public_ip_address"),
-		ResourceGroup:                    jsii.String("resource_group"),
-		Subnet:                           jsii.String("subnet"),
-		VirtualMachine:                   jsii.String("virtual_machine"),
-		VirtualNetwork:                   jsii.String("virtual_network"),
+		ApplicationSecurityGroup:         i.String("application_security_group"),
+		AzureRMProvider:                  i.String("azurerm"),
+		CosmosDBAccount:                  i.String("cosmosdb_account"),
+		NamingModule:                     i.String("naming"),
+		NetworkInterface:                 i.String("network_interface"),
+		NetworkInterfaceASGAssociation:   i.String("network_interface_asg_association"),
+		NetworkInterfaceNSGAssociation:   i.String("network_interface_nsg_association"),
+		NetworkSecurityGroup:             i.String("network_security_group"),
+		PrivateDNSZone:                   i.String("private_dns_zone"),
+		PrivateDNSZoneGroup:              i.String("private_dns_zone_group"),
+		PrivateDNSZoneVirtualNetworkLink: i.String("private_dns_zone_virtual_network_link"),
+		PrivateEndpoint:                  i.String("private_endpoint"),
+		PublicIPAddress:                  i.String("public_ip_address"),
+		ResourceGroup:                    i.String("resource_group"),
+		Subnet:                           i.String("subnet"),
+		VirtualMachine:                   i.String("virtual_machine"),
+		VirtualNetwork:                   i.String("virtual_network"),
 	}
 }
