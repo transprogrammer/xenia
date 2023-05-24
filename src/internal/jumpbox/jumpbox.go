@@ -21,6 +21,7 @@ func NewJumpboxStack(scope constructs.Construct, coreStack c.CoreStack) {
 	naming := coreStack.JumpboxNaming
 	
 	resourceGroup := c.NewResourceGroup(stack, naming)
+	publicIP := NewPublicIP(stack, naming, resourceGroup)
 
 	applicationSecurityGroup := NewApplicationSecurityGroup(stack, naming, resourceGroup)
 	networkSecurityGroup := NewNetworkSecurityGroup(stack, naming, resourceGroup)

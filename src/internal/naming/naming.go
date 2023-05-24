@@ -9,18 +9,16 @@ import (
 
 type NamingModule naming.Naming
 
-func NewNamingModule(stack cdktf.TerraformStack, suffixes []string) naming.Naming {
+func NewNamingModule(stack cdktf.TerraformStack, suffixes []*string) naming.Naming {
 
 	id := *cfg.Ids.NamingModule
-	var sfxs []*string
 	for _, suffix := range suffixes {
-		id = id + "_" + suffix
-		sfxs = append(sfxs, &suffix)
+		id = id + "_" + *suffix
 	}
 
 	return naming.NewNaming(stack, &id, &naming.NamingConfig{
 		Prefix:               &[]*string{cfg.Config.ProjectName},
 		UniqueIncludeNumbers: ii.Bool(false),
-		Suffix:               &sfxs,
+		Suffix:               &suffixes,
 	})
 }

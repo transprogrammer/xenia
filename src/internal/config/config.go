@@ -6,23 +6,14 @@ import (
 	"os"
 )
 
-const ConfigFile = "Config.json"
-
-var Config Configuration = MakeConfig()
-
 type Regions struct {
 	Primary   *string `json:"primary"`
 	Secondary *string `json:"secondary"`
 }
 
-type Subnet struct {
-	Postfix       *string `json:"postfix"`
-	AddressPrefix *string `json:"addressPrefix"`
-}
-
 type Subnets struct {
-	VirtualMachine *Subnet `json:"virtualMachine"`
-	MongoDB        *Subnet `json:"mongoDB"`
+	Jumpbox *string `json:"jumpbox"`
+	MongoDB *string `json:"mongoDB"`
 }
 
 type Image struct {
@@ -58,6 +49,10 @@ type Configuration struct {
 	VirtualMachine  *VirtualMachine  `json:"virtualMachine"`
 	DatabaseAccount *DatabaseAccount `json:"databaseAccount"`
 }
+
+const ConfigFile = "Config.json"
+
+var Config Configuration = MakeConfig()
 
 func MakeConfig() Configuration {
 

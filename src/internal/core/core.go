@@ -26,34 +26,43 @@ import (
 type CoreStack struct {
 	MongoDBNaming  gn.Naming
 	JumpboxNaming  gn.Naming
-	PublicIP       ip.PublicIp
 	VirtualNetwork vnet.VirtualNetwork
 }
 
-func MakeCoreStack(scope constructs.Construct) CoreStack {
-	stackName := fmt.Sprintf("%s-core", *x.Config.ProjectName)
+const JumpboxIndex = 0
+const MongoDBIndex = 1
 
-	stack := tf.NewTerraformStack(scope, &stackName)
+func MakeCoreStack(scope constructs.Construct) CoreStack {
+	stack := tf.NewTerraformStack(scope, x.Stacks.Core)
 
 	NewAzureRMProvider(stack)
 
-	naming := n.NewNamingModule(stack, []string{"xenia", "core"})
-	mongoDBNaming := n.NewNamingModule(stack, []string{"xenia", "mongodb"})
-	jumpboxNaming := n.NewNamingModule(stack, []string{"xenia", "jumpbox"})
+	naming := n.NewNamingModule(stack, x.Names.Core)
+	mongoDBNaming := n.NewNamingModule(stack, x.Names.MongoDB)
+	jumpboxNaming := n.NewNamingModule(stack, x.Names.Jumpbox)
 
 	resourceGroup := NewResourceGroup(stack, naming)
 
-	publicIP := NewPublicIP(stack, naming, resourceGroup)
-	virtualNetwork := VirtualNetwork{NewVirtualNetwork(stack, naming, mongoDBNaming, jumpboxNaming, resourceGroup)}
+	// TODO: Use ASG. <>
+	jumpboxNSG := NewJumpboxNSG(stack, jumpboxNaming, resourceGroup)
+
+	subnets := make([]vnet.VirtualNetworkSubnet, 2)
+
+	jumpboxSubnet := NewSubnet(stack, jumpboxNaming, jumpboxNSG, x.Config.Subnets.Jumpbox)
+	subnets[JumpboxIndex] = jumpboxSubnet
+
+	mongoDBSubnet := NewSubnet(stack, mongoDBNaming, nil, x.Config.Subnets.MongoDB)
+	subnets[MongoDBIndex] = mongoDBSubnet
+
+	vnet := VNet{NewVNet(stack, naming, resourceGroup, subnets)}
 
 	privateDNSZone := NewPrivateDNSZone(stack, resourceGroup)
-	NewDNSZoneVNetLink(stack, naming, resourceGroup, privateDNSZone, virtualNetwork)
+	NewDNSZoneVNetLink(stack, naming, resourceGroup, privateDNSZone, vnet)
 
 	return CoreStack{
 		MongoDBNaming:  mongoDBNaming,
 		JumpboxNaming:  jumpboxNaming,
-		PublicIP:       publicIP,
-		VirtualNetwork: virtualNetwork,
+		VirtualNetwork: vnet,
 	}
 }
 
@@ -75,66 +84,7 @@ func NewResourceGroup(stack tf.TerraformStack, naming n.NamingModule) rg.Resourc
 	return rg.NewResourceGroup(stack, x.Ids.ResourceGroup, &input)
 }
 
-func NewPublicIP(stack tf.TerraformStack, naming n.NamingModule, group rg.ResourceGroup) ip.PublicIp {
-	input := ip.PublicIpConfig{
-		Name:                 naming.PublicIpOutput(),
-		Location:             x.Config.Regions.Primary,
-		ResourceGroupName:    group.Name(),
-		Sku:                  jsii.String("Basic"),
-		AllocationMethod:     jsii.String("Dynamic"),
-		IpVersion:            jsii.String("IPv4"),
-		DomainNameLabel:      x.Config.ProjectName,
-		IdleTimeoutInMinutes: jsii.Number(4),
-	}
-
-	return ip.NewPublicIp(stack, x.Ids.PublicIPAddress, &input)
-}
-
-// HACK: Inline subnets too enable updating in-place. <>
-// SEE: https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deployment-modes#incremental-mode <>
-
-const MongoDBSubnetIndex = 0
-const VirtualMachineSubnetIndex = 1
-
-func NewVirtualNetwork(stack tf.TerraformStack, naming n.NamingModule, mongoDBNaming n.NamingModule, jumpboxNaming n.NamingModule, resourceGroup rg.ResourceGroup) vnet.VirtualNetwork {
-
-	subnets := []vnet.VirtualNetworkSubnet{}
-	subnets[MongoDBSubnetIndex] = vnet.VirtualNetworkSubnet{
-		Name:          mongoDBNaming.SubnetOutput(),
-		AddressPrefix: x.Config.Subnets.MongoDB.AddressPrefix,
-	}
-
-	subnets[VirtualMachineSubnetIndex] = vnet.VirtualNetworkSubnet{
-		Name:          jumpboxNaming.SubnetOutput(),
-		AddressPrefix: x.Config.Subnets.VirtualMachine.AddressPrefix,
-	}
-
-	input := vnet.VirtualNetworkConfig{
-		Name:              naming.VirtualNetworkOutput(),
-		AddressSpace:      x.Config.AddressSpace,
-		Location:          resourceGroup.Location(),
-		ResourceGroupName: resourceGroup.Name(),
-		Subnet:            subnets,
-	}
-
-	return vnet.NewVirtualNetwork(stack, x.Ids.VirtualNetwork, &input)
-}
-
-type VirtualNetwork struct {
-	vnet.VirtualNetwork
-}
-
-func (virtualNetwork VirtualNetwork) mongoDBSubnet() vnet.VirtualNetworkSubnetOutputReference {
-	index := float64(MongoDBSubnetIndex)
-	return virtualNetwork.Subnet().Get(&index)
-}
-
-func (virtualNetwork VirtualNetwork) VirtualMachineSubnet() vnet.VirtualNetworkSubnetOutputReference {
-	index := float64(VirtualMachineSubnetIndex)
-	return virtualNetwork.Subnet().Get(&index)
-}
-
-func NewNetworkSecurityGroup(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) nsg.NetworkSecurityGroup {
+func NewJumpboxNSG(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) nsg.NetworkSecurityGroup {
 	input := nsg.NetworkSecurityGroupConfig{
 		Name:              naming.NetworkSecurityGroupOutput(),
 		Location:          x.Config.Regions.Primary,
@@ -156,6 +106,58 @@ func NewNetworkSecurityGroup(stack tf.TerraformStack, naming n.NamingModule, res
 	return nsg.NewNetworkSecurityGroup(stack, x.Ids.NetworkSecurityGroup, &input)
 }
 
+func NewSubnet(stack tf.TerraformStack, naming n.NamingModule, networkSecurityGroup nsg.NetworkSecurityGroup, addressPrefix *string) vnet.VirtualNetworkSubnet {
+	return vnet.VirtualNetworkSubnet{
+		Name:          naming.SubnetOutput(),
+		AddressPrefix: addressPrefix,
+		SecurityGroup: networkSecurityGroup.Id(),
+	}
+}
+
+func NewPublicIP(stack tf.TerraformStack, naming n.NamingModule, group rg.ResourceGroup) ip.PublicIp {
+	input := ip.PublicIpConfig{
+		Name:                 naming.PublicIpOutput(),
+		Location:             x.Config.Regions.Primary,
+		ResourceGroupName:    group.Name(),
+		Sku:                  jsii.String("Basic"),
+		AllocationMethod:     jsii.String("Dynamic"),
+		IpVersion:            jsii.String("IPv4"),
+		DomainNameLabel:      x.Config.ProjectName,
+		IdleTimeoutInMinutes: jsii.Number(4),
+	}
+
+	return ip.NewPublicIp(stack, x.Ids.PublicIPAddress, &input)
+}
+
+// HACK: Inline subnets too enable updating in-place. <>
+// SEE: https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deployment-modes#incremental-mode <>
+
+func NewVNet(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, subnets []vnet.VirtualNetworkSubnet) vnet.VirtualNetwork {
+	input := vnet.VirtualNetworkConfig{
+		Name:              naming.VirtualNetworkOutput(),
+		AddressSpace:      x.Config.AddressSpace,
+		Location:          resourceGroup.Location(),
+		ResourceGroupName: resourceGroup.Name(),
+		Subnet:            subnets,
+	}
+
+	return vnet.NewVirtualNetwork(stack, x.Ids.VirtualNetwork, &input)
+}
+
+type VNet struct {
+	vnet.VirtualNetwork
+}
+
+func (vnet VNet) mongoDBSubnet() vnet.VirtualNetworkSubnetOutputReference {
+	index := float64(MongoDBIndex)
+	return vnet.Subnet().Get(&index)
+}
+
+func (vnet VNet) VirtualMachineSubnet() vnet.VirtualNetworkSubnetOutputReference {
+	index := float64(JumpboxIndex)
+	return vnet.Subnet().Get(&index)
+}
+
 func NewApplicationSecurityGroup(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) asg.ApplicationSecurityGroup {
 	input := asg.ApplicationSecurityGroupConfig{
 		Name:              naming.ApplicationSecurityGroupOutput(),
@@ -166,7 +168,7 @@ func NewApplicationSecurityGroup(stack tf.TerraformStack, naming n.NamingModule,
 	return asg.NewApplicationSecurityGroup(stack, x.Ids.ApplicationSecurityGroup, &input)
 }
 
-func NewNetworkInterface(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, virtualNetwork VirtualNetwork, publicIp ip.PublicIp) nic.NetworkInterface {
+func NewNetworkInterface(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, vnet VNet, publicIp ip.PublicIp) nic.NetworkInterface {
 	input := nic.NetworkInterfaceConfig{
 		Name:              naming.NetworkInterfaceOutput(),
 		Location:          x.Config.Regions.Primary,
@@ -175,7 +177,7 @@ func NewNetworkInterface(stack tf.TerraformStack, naming n.NamingModule, resourc
 		IpConfiguration: nic.NetworkInterfaceIpConfiguration{
 			Name:              jsii.String("ipconfig"),
 			Primary:           jsii.Bool(true),
-			SubnetId:          virtualNetwork.VirtualMachineSubnet().Id(),
+			SubnetId:          vnet.VirtualMachineSubnet().Id(),
 			PublicIpAddressId: publicIp.Id(),
 		},
 	}
@@ -210,14 +212,14 @@ func NewPrivateDNSZone(stack tf.TerraformStack, resourceGroup rg.ResourceGroup) 
 	return dns.NewPrivateDnsZone(stack, x.Ids.PrivateDNSZone, &input)
 }
 
-func NewDNSZoneVNetLink(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, privateDnsZone dns.PrivateDnsZone, virtualNetwork vnet.VirtualNetwork) dnsl.PrivateDnsZoneVirtualNetworkLink {
+func NewDNSZoneVNetLink(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, privateDnsZone dns.PrivateDnsZone, vnet vnet.VirtualNetwork) dnsl.PrivateDnsZoneVirtualNetworkLink {
 	name := fmt.Sprintf("%-vnetlink", naming.PrivateDnsZoneOutput())
 
 	input := dnsl.PrivateDnsZoneVirtualNetworkLinkConfig{
 		Name:                &name,
 		ResourceGroupName:   resourceGroup.Name(),
 		PrivateDnsZoneName:  privateDnsZone.Name(),
-		VirtualNetworkId:    virtualNetwork.Id(),
+		VirtualNetworkId:    vnet.Id(),
 		RegistrationEnabled: jsii.Bool(true),
 	}
 
