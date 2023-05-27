@@ -43,8 +43,8 @@ func MakeCoreStack(scope constructs.Construct) CoreStack {
 
 	resourceGroup := NewResourceGroup(stack, naming)
 
-	// TODO: Use ASG. <>
-	jumpboxNSG := NewJumpboxNSG(stack, jumpboxNaming, resourceGroup)
+	jumpboxASG := NewASG(stack, jumpboxNaming, resourceGroup)
+	jumpboxNSG := NewNSG(stack, jumpboxNaming, resourceGroup, jumpboxASG)
 
 	subnets := make([]vnet.VirtualNetworkSubnet, 2)
 
@@ -55,6 +55,9 @@ func MakeCoreStack(scope constructs.Construct) CoreStack {
 	subnets[MongoDBIndex] = mongoDBSubnet
 
 	vnet := VNet{NewVNet(stack, naming, resourceGroup, subnets)}
+
+	jumpboxIP := NewIP(stack, jumpboxNaming, resourceGroup)
+	NewNIC(stack, jumpboxNaming, resourceGroup, jumpboxSubnet, jumpboxASG, jumpboxIP)
 
 	privateDNSZone := NewPrivateDNSZone(stack, resourceGroup)
 	NewDNSZoneVNetLink(stack, naming, resourceGroup, privateDNSZone, vnet)
@@ -84,22 +87,33 @@ func NewResourceGroup(stack tf.TerraformStack, naming n.NamingModule) rg.Resourc
 	return rg.NewResourceGroup(stack, x.Ids.ResourceGroup, &input)
 }
 
-func NewJumpboxNSG(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) nsg.NetworkSecurityGroup {
+func NewASG(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) asg.ApplicationSecurityGroup {
+	input := asg.ApplicationSecurityGroupConfig{
+		Name:              naming.ApplicationSecurityGroupOutput(),
+		Location:          x.Config.Regions.Primary,
+		ResourceGroupName: resourceGroup.Name(),
+	}
+
+	return asg.NewApplicationSecurityGroup(stack, x.Ids.ApplicationSecurityGroup, &input)
+}
+
+func NewNSG(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, asg asg.ApplicationSecurityGroup) nsg.NetworkSecurityGroup {
 	input := nsg.NetworkSecurityGroupConfig{
 		Name:              naming.NetworkSecurityGroupOutput(),
 		Location:          x.Config.Regions.Primary,
 		ResourceGroupName: resourceGroup.Name(),
 		SecurityRule: nsg.NetworkSecurityGroupSecurityRule{
-			Name:                     jsii.String("SSH"),
-			Description:              jsii.String("Allow SSH"),
-			Priority:                 jsii.Number(100),
-			Direction:                jsii.String("Inbound"),
-			Access:                   jsii.String("Allow"),
-			Protocol:                 jsii.String("Tcp"),
-			SourcePortRange:          jsii.String("*"),
-			DestinationPortRange:     jsii.String("22"),
-			SourceAddressPrefix:      jsii.String("*"),
-			DestinationAddressPrefix: jsii.String("*"),
+			Name:                                   jsii.String("SSH"),
+			Description:                            jsii.String("Allow SSH"),
+			Priority:                               jsii.Number(100),
+			Direction:                              jsii.String("Inbound"),
+			Access:                                 jsii.String("Allow"),
+			Protocol:                               jsii.String("Tcp"),
+			SourcePortRange:                        jsii.String("*"),
+			DestinationPortRange:                   jsii.String("22"),
+			SourceAddressPrefix:                    jsii.String("*"),
+			DestinationAddressPrefix:               jsii.String("*"),
+			DestinationApplicationSecurityGroupIds: &[]*string{asg.Id()},
 		},
 	}
 
@@ -114,7 +128,7 @@ func NewSubnet(stack tf.TerraformStack, naming n.NamingModule, networkSecurityGr
 	}
 }
 
-func NewPublicIP(stack tf.TerraformStack, naming n.NamingModule, group rg.ResourceGroup) ip.PublicIp {
+func NewIP(stack tf.TerraformStack, naming n.NamingModule, group rg.ResourceGroup) ip.PublicIp {
 	input := ip.PublicIpConfig{
 		Name:                 naming.PublicIpOutput(),
 		Location:             x.Config.Regions.Primary,
@@ -148,6 +162,7 @@ type VNet struct {
 	vnet.VirtualNetwork
 }
 
+// NOTE: Wrap VNet to provide access to subnets by index. <>
 func (vnet VNet) mongoDBSubnet() vnet.VirtualNetworkSubnetOutputReference {
 	index := float64(MongoDBIndex)
 	return vnet.Subnet().Get(&index)
@@ -158,17 +173,7 @@ func (vnet VNet) VirtualMachineSubnet() vnet.VirtualNetworkSubnetOutputReference
 	return vnet.Subnet().Get(&index)
 }
 
-func NewApplicationSecurityGroup(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) asg.ApplicationSecurityGroup {
-	input := asg.ApplicationSecurityGroupConfig{
-		Name:              naming.ApplicationSecurityGroupOutput(),
-		Location:          x.Config.Regions.Primary,
-		ResourceGroupName: resourceGroup.Name(),
-	}
-
-	return asg.NewApplicationSecurityGroup(stack, x.Ids.ApplicationSecurityGroup, &input)
-}
-
-func NewNetworkInterface(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, vnet VNet, publicIp ip.PublicIp) nic.NetworkInterface {
+func NewNIC(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, vnet VNet, ip ip.PublicIp) nic.NetworkInterface {
 	input := nic.NetworkInterfaceConfig{
 		Name:              naming.NetworkInterfaceOutput(),
 		Location:          x.Config.Regions.Primary,
@@ -178,29 +183,24 @@ func NewNetworkInterface(stack tf.TerraformStack, naming n.NamingModule, resourc
 			Name:              jsii.String("ipconfig"),
 			Primary:           jsii.Bool(true),
 			SubnetId:          vnet.VirtualMachineSubnet().Id(),
-			PublicIpAddressId: publicIp.Id(),
+			PublicIpAddressId: ip.Id(),
 		},
 	}
+	nic := nic.NewNetworkInterface(stack, x.Ids.NetworkInterface, &input)
 
-	return nic.NewNetworkInterface(stack, x.Ids.NetworkInterface, &input)
-}
-
-func NewNICASGAssocation(stack tf.TerraformStack, networkInterface nic.NetworkInterface, applicationSecurityGroup asg.ApplicationSecurityGroup) nicasg.NetworkInterfaceApplicationSecurityGroupAssociation {
-	input := nicasg.NetworkInterfaceApplicationSecurityGroupAssociationConfig{
+	asgInput := nicasg.NetworkInterfaceApplicationSecurityGroupAssociationConfig{
 		NetworkInterfaceId:         networkInterface.Id(),
 		ApplicationSecurityGroupId: applicationSecurityGroup.Id(),
 	}
+	nicasg.NewNetworkInterfaceApplicationSecurityGroupAssociation(stack, x.Ids.NetworkInterfaceASGAssociation, &asgInput)
 
-	return nicasg.NewNetworkInterfaceApplicationSecurityGroupAssociation(stack, x.Ids.NetworkInterfaceASGAssociation, &input)
-}
-
-func NewNICNSGAssocation(stack tf.TerraformStack, networkInterface nic.NetworkInterface, networkSecurityGroup nsg.NetworkSecurityGroup) nicnsg.NetworkInterfaceSecurityGroupAssociation {
-	input := nicnsg.NetworkInterfaceSecurityGroupAssociationConfig{
+	nsgInput := nicnsg.NetworkInterfaceSecurityGroupAssociationConfig{
 		NetworkInterfaceId:     networkInterface.Id(),
 		NetworkSecurityGroupId: networkSecurityGroup.Id(),
 	}
+	nicnsg.NewNetworkInterfaceSecurityGroupAssociation(stack, x.Ids.NetworkInterfaceNSGAssociation, &nsgInput)
 
-	return nicnsg.NewNetworkInterfaceSecurityGroupAssociation(stack, x.Ids.NetworkInterfaceNSGAssociation, &input)
+	return nic
 }
 
 func NewPrivateDNSZone(stack tf.TerraformStack, resourceGroup rg.ResourceGroup) dns.PrivateDnsZone {
