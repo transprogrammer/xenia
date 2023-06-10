@@ -46,15 +46,18 @@ func MakeCoreStack(scope constructs.Construct) CoreStack {
 	jumpboxASG := NewASG(stack, jumpboxNaming, resourceGroup)
 	jumpboxNSG := NewNSG(stack, jumpboxNaming, resourceGroup, jumpboxASG)
 
-	subnets := make([]vnet.VirtualNetworkSubnet, 2)
+	subnetInputs := make([]vnet.VirtualNetworkSubnet, 2)
 
-	jumpboxSubnet := NewSubnet(stack, jumpboxNaming, jumpboxNSG, x.Config.Subnets.Jumpbox)
-	subnets[JumpboxIndex] = jumpboxSubnet
+	jumpboxSubnetInput := NewSubnetInput(stack, jumpboxNaming, jumpboxNSG, x.Config.Subnets.Jumpbox)
+	subnetInputs[JumpboxIndex] = jumpboxSubnetInput
 
-	mongoDBSubnet := NewSubnet(stack, mongoDBNaming, nil, x.Config.Subnets.MongoDB)
-	subnets[MongoDBIndex] = mongoDBSubnet
+	mongoDBSubnetInput := NewSubnetInput(stack, mongoDBNaming, nil, x.Config.Subnets.MongoDB)
+	subnetInputs[MongoDBIndex] = mongoDBSubnetInput
 
-	vnet := VNet{NewVNet(stack, naming, resourceGroup, subnets)}
+	vnet := NewVNet(stack, naming, resourceGroup, subnetInputs)
+
+	jumpboxSubnet := GetSubnet(vnet, JumpboxIndex)
+	// mongoDBSubnet := GetSubnet(vnet, MongoDBIndex)
 
 	jumpboxIP := NewIP(stack, jumpboxNaming, resourceGroup)
 	NewNIC(stack, jumpboxNaming, resourceGroup, jumpboxSubnet, jumpboxASG, jumpboxIP)
@@ -120,7 +123,7 @@ func NewNSG(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.Res
 	return nsg.NewNetworkSecurityGroup(stack, x.Ids.NetworkSecurityGroup, &input)
 }
 
-func NewSubnet(stack tf.TerraformStack, naming n.NamingModule, networkSecurityGroup nsg.NetworkSecurityGroup, addressPrefix *string) vnet.VirtualNetworkSubnet {
+func NewSubnetInput(stack tf.TerraformStack, naming n.NamingModule, networkSecurityGroup nsg.NetworkSecurityGroup, addressPrefix *string) vnet.VirtualNetworkSubnet {
 	return vnet.VirtualNetworkSubnet{
 		Name:          naming.SubnetOutput(),
 		AddressPrefix: addressPrefix,
@@ -163,8 +166,7 @@ type VNet struct {
 }
 
 // NOTE: Wrap VNet to provide access to subnets by index. <>
-func (vnet VNet) mongoDBSubnet() vnet.VirtualNetworkSubnetOutputReference {
-	index := float64(MongoDBIndex)
+func GetSubnet(vnet vnet.VirtualNetwork, index float64) vnet.VirtualNetworkSubnetOutputReference {
 	return vnet.Subnet().Get(&index)
 }
 
@@ -173,7 +175,7 @@ func (vnet VNet) VirtualMachineSubnet() vnet.VirtualNetworkSubnetOutputReference
 	return vnet.Subnet().Get(&index)
 }
 
-func NewNIC(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, vnet VNet, ip ip.PublicIp) nic.NetworkInterface {
+func NewNIC(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, subnet vnet.VirtualNetworkSubnetOutputReference, asg asg.ApplicationSecurityGroup, ip ip.PublicIp) nic.NetworkInterface {
 	input := nic.NetworkInterfaceConfig{
 		Name:              naming.NetworkInterfaceOutput(),
 		Location:          x.Config.Regions.Primary,
@@ -182,21 +184,21 @@ func NewNIC(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.Res
 		IpConfiguration: nic.NetworkInterfaceIpConfiguration{
 			Name:              jsii.String("ipconfig"),
 			Primary:           jsii.Bool(true),
-			SubnetId:          vnet.VirtualMachineSubnet().Id(),
+			SubnetId:          subnet.Id(),
 			PublicIpAddressId: ip.Id(),
 		},
 	}
 	nic := nic.NewNetworkInterface(stack, x.Ids.NetworkInterface, &input)
 
 	asgInput := nicasg.NetworkInterfaceApplicationSecurityGroupAssociationConfig{
-		NetworkInterfaceId:         networkInterface.Id(),
-		ApplicationSecurityGroupId: applicationSecurityGroup.Id(),
+		NetworkInterfaceId:         nic.Id(),
+		ApplicationSecurityGroupId: asg.Id(),
 	}
 	nicasg.NewNetworkInterfaceApplicationSecurityGroupAssociation(stack, x.Ids.NetworkInterfaceASGAssociation, &asgInput)
 
 	nsgInput := nicnsg.NetworkInterfaceSecurityGroupAssociationConfig{
-		NetworkInterfaceId:     networkInterface.Id(),
-		NetworkSecurityGroupId: networkSecurityGroup.Id(),
+		NetworkInterfaceId:     nic.Id(),
+		NetworkSecurityGroupId: nsg.Id(),
 	}
 	nicnsg.NewNetworkInterfaceSecurityGroupAssociation(stack, x.Ids.NetworkInterfaceNSGAssociation, &nsgInput)
 
