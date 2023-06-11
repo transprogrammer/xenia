@@ -7,13 +7,21 @@ import (
 	i "github.com/aws/jsii-runtime-go"
 	p "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
 	m "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualmachine"
-	t "github.com/hashicorp/terraform-cdk-go/cdktf"
+	"github.com/hashicorp/terraform-cdk-go/cdktf"
 	x "github.com/transprogrammer/xenia/internal/config"
 	c "github.com/transprogrammer/xenia/internal/core"
 	n "github.com/transprogrammer/xenia/internal/naming"
 )
 
-func NewJumpboxStack(scope constructs.Construct, coreStack c.CoreStack) {
+type JumpboxStack struct {
+	TerraformStack cdktf.TerraformStack
+}
+
+func (s JumpboxStack) Stack() cdktf.TerraformStack {
+	return s.TerraformStack
+}
+
+func NewStack(scope constructs.Construct, coreStack c.CoreStack) JumpboxStack {
 	stackName := fmt.Sprintf("%s-jumpbox", *x.Config.ProjectName)
 
 	stack := t.NewTerraformStack(app, &stackName)

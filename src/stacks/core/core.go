@@ -24,15 +24,20 @@ import (
 )
 
 type CoreStack struct {
+	TerraformStack tf.TerraformStack
 	MongoDBNaming  gn.Naming
 	JumpboxNaming  gn.Naming
 	VirtualNetwork vnet.VirtualNetwork
 }
 
+func (s CoreStack) Stack() tf.TerraformStack {
+	return s.TerraformStack
+}
+
 const JumpboxIndex = 0
 const MongoDBIndex = 1
 
-func MakeCoreStack(scope constructs.Construct) CoreStack {
+func NewStack(scope constructs.Construct) CoreStack {
 	stack := tf.NewTerraformStack(scope, x.Stacks.Core)
 
 	NewAzureRMProvider(stack)

@@ -15,10 +15,20 @@ import (
 	prov "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
 )
 
-func NewMongoDBStack(scopes constructs.Construct, coreStack CoreStack) {
-	stack := cdktf.NewTerraformStack(scopes, &name)
+type MongoDBStack struct {
+	TerraformStack cdktf.TerraformStack
+}
 
-	m
+func (s MongoDBStack) Stack() cdktf.TerraformStack {
+	return s.TerraformStack
+}
+
+func NewStack(scopes constructs.Construct, coreStack CoreStack) MongoDBStack {
+	stack := new(MongoDBStack)
+
+	stack.TerraformStack = cdktf.NewTerraformStack(scopes, &name)
+
+	return stack
 }
 
 var MongoNaming naming.Naming = makeNamingModule([]*string{ii.String("mongo")})
