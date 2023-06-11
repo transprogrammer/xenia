@@ -34,8 +34,10 @@ func (s CoreStack) Stack() tf.TerraformStack {
 	return s.TerraformStack
 }
 
-const JumpboxIndex = 0
-const MongoDBIndex = 1
+const (
+	JumpboxIndex = iota
+	MongoDBIndex
+)
 
 func NewStack(scope constructs.Construct) CoreStack {
 	stack := tf.NewTerraformStack(scope, x.Stacks.Core)
@@ -65,7 +67,7 @@ func NewStack(scope constructs.Construct) CoreStack {
 	// mongoDBSubnet := GetSubnet(vnet, MongoDBIndex)
 
 	jumpboxIP := NewIP(stack, jumpboxNaming, resourceGroup)
-	NewNIC(stack, jumpboxNaming, resourceGroup, jumpboxSubnet, jumpboxASG, jumpboxIP)
+	NewNIC(stack, jumpboxNaming, resourceGroup, jumpboxSubnet, jumpboxASG, jumpboxNSG, jumpboxIP)
 
 	privateDNSZone := NewPrivateDNSZone(stack, resourceGroup)
 	NewDNSZoneVNetLink(stack, naming, resourceGroup, privateDNSZone, vnet)
@@ -180,7 +182,7 @@ func (vnet VNet) VirtualMachineSubnet() vnet.VirtualNetworkSubnetOutputReference
 	return vnet.Subnet().Get(&index)
 }
 
-func NewNIC(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, subnet vnet.VirtualNetworkSubnetOutputReference, asg asg.ApplicationSecurityGroup, ip ip.PublicIp) nic.NetworkInterface {
+func NewNIC(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, subnet vnet.VirtualNetworkSubnetOutputReference, asg asg.ApplicationSecurityGroup, nsg nsg.NetworkSecurityGroup, ip ip.PublicIp) nic.NetworkInterface {
 	input := nic.NetworkInterfaceConfig{
 		Name:              naming.NetworkInterfaceOutput(),
 		Location:          x.Config.Regions.Primary,
