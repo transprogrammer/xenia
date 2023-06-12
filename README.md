@@ -37,11 +37,9 @@ An azure cdktf project solution.
 
 <dl>
     <dt>ASG</dt>
-    <dd>Application Security Group.</dd>
-
+    <dd>Application Security Group</dd>
     <dt>NIC</dt>
     <dd>Network Interface</dd>
-
     <dt>NSG</dt>
     <dd>Network Security Group</dd>
 </dl>
