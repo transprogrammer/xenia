@@ -5,7 +5,7 @@ import (
 )
 
 type Identifiers struct {
-	ApplicationSecurityGroup         *string
+	ASG                              *string
 	AzureRMProvider                  *string
 	CosmosDBAccount                  *string
 	NamingModule                     *string
@@ -21,11 +21,11 @@ type Identifiers struct {
 	ResourceGroup                    *string
 	Subnet                           *string
 	VirtualMachine                   *string
-	VirtualNetwork                   *string
+	VNet                             *string
 }
 
 var Ids Identifiers = Identifiers{
-	ApplicationSecurityGroup:         i.String("application_security_group"),
+	ASG:                              i.String("application_security_group"),
 	AzureRMProvider:                  i.String("azurerm"),
 	CosmosDBAccount:                  i.String("cosmosdb_account"),
 	NamingModule:                     i.String("naming"),
@@ -41,5 +41,5 @@ var Ids Identifiers = Identifiers{
 	ResourceGroup:                    i.String("resource_group"),
 	Subnet:                           i.String("subnet"),
 	VirtualMachine:                   i.String("virtual_machine"),
-	VirtualNetwork:                   i.String("virtual_network"),
+	VNet:                             i.String("virtual_network"),
 }

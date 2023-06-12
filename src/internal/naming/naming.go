@@ -7,11 +7,11 @@ import (
 	"github.com/transprogrammer/xenia/internal/config"
 )
 
-type NamingModule naming.Naming
+type Naming naming.Naming
 
-func NewNamingModule(stack cdktf.TerraformStack, suffixes []*string) naming.Naming {
+func NewNaming(stack cdktf.TerraformStack, suffixes []*string) naming.Naming {
 
-	id := *config.Ids.NamingModule
+	id := *config.Ids.Naming
 	for _, suffix := range suffixes {
 		id = id + "_" + *suffix
 	}

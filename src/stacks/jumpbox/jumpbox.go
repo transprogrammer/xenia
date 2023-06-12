@@ -76,3 +76,24 @@ func NewVirtualMachine(stack t.TerraformStack, naming n.NamingModule, resourceGr
 	return m.NewVirtualMachine(stack, &naming.VirtualMachineOutput(), &input)
 }
 o
+
+func NewPublicIP(
+	stack cdktf.TerraformStack,
+	naming Naming,
+	group rg.ResourceGroup,
+) publicip.PublicIp {
+
+	input := publicip.PublicIpConfig{
+		Name:                 PublicIpOutput(),
+		Location:             Config.Regions.Primary,
+		ResourceGroupName:    group.Name(),
+		Sku:                  jsii.String("Basic"),
+		AllocationMethod:     jsii.String("Dynamic"),
+		IpVersion:            jsii.String("IPv4"),
+		DomainNameLabel:      Config.ProjectName,
+		IdleTimeoutInMinutes: jsii.Number(4),
+	}
+
+	return publicip.NewPublicIp(stack, Ids.PublicIPAddress, &input)
+}
+

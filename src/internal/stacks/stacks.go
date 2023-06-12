@@ -1,4 +1,4 @@
-package stack
+package stacks
 
 import (
 	"github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
