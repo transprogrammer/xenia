@@ -3,10 +3,10 @@ package core
 import (
 	"fmt"
 
-	p "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/provider"
 	gn "github.com/transprogrammer/xenia/generated/naming"
 	x "github.com/transprogrammer/xenia/internal/config"
 	n "github.com/transprogrammer/xenia/internal/naming"
+	"github.com/transprogrammer/xenia/internal/stack"
 
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
@@ -40,61 +40,43 @@ const (
 )
 
 func NewStack(scope constructs.Construct) CoreStack {
-	stack := tf.NewTerraformStack(scope, x.Stacks.Core)
+	coreStack := tf.NewTerraformStack(scope, x.Stacks.Core)
 
-	NewAzureRMProvider(stack)
+	stack.NewAzureRMProvider(coreStack)
 
-	naming := n.NewNamingModule(stack, x.Names.Core)
-	mongoDBNaming := n.NewNamingModule(stack, x.Names.MongoDB)
-	jumpboxNaming := n.NewNamingModule(stack, x.Names.Jumpbox)
+	naming := n.NewNamingModule(coreStack, x.Names.Core)
+	mongoDBNaming := n.NewNamingModule(coreStack, x.Names.MongoDB)
+	jumpboxNaming := n.NewNamingModule(coreStack, x.Names.Jumpbox)
 
-	resourceGroup := NewResourceGroup(stack, naming)
+	resourceGroup := stack.NewResourceGroup(coreStack, naming)
 
-	jumpboxASG := NewASG(stack, jumpboxNaming, resourceGroup)
-	jumpboxNSG := NewNSG(stack, jumpboxNaming, resourceGroup, jumpboxASG)
+	jumpboxASG := NewASG(coreStack, jumpboxNaming, resourceGroup)
+	jumpboxNSG := NewNSG(coreStack, jumpboxNaming, resourceGroup, jumpboxASG)
 
 	subnetInputs := make([]vnet.VirtualNetworkSubnet, 2)
 
-	jumpboxSubnetInput := NewSubnetInput(stack, jumpboxNaming, jumpboxNSG, x.Config.Subnets.Jumpbox)
+	jumpboxSubnetInput := NewSubnetInput(coreStack, jumpboxNaming, jumpboxNSG, x.Config.Subnets.Jumpbox)
 	subnetInputs[JumpboxIndex] = jumpboxSubnetInput
 
-	mongoDBSubnetInput := NewSubnetInput(stack, mongoDBNaming, nil, x.Config.Subnets.MongoDB)
+	mongoDBSubnetInput := NewSubnetInput(coreStack, mongoDBNaming, nil, x.Config.Subnets.MongoDB)
 	subnetInputs[MongoDBIndex] = mongoDBSubnetInput
 
-	vnet := NewVNet(stack, naming, resourceGroup, subnetInputs)
+	vnet := NewVNet(coreStack, naming, resourceGroup, subnetInputs)
 
 	jumpboxSubnet := GetSubnet(vnet, JumpboxIndex)
 	// mongoDBSubnet := GetSubnet(vnet, MongoDBIndex)
 
-	jumpboxIP := NewIP(stack, jumpboxNaming, resourceGroup)
-	NewNIC(stack, jumpboxNaming, resourceGroup, jumpboxSubnet, jumpboxASG, jumpboxNSG, jumpboxIP)
+	jumpboxIP := NewIP(coreStack, jumpboxNaming, resourceGroup)
+	NewNIC(coreStack, jumpboxNaming, resourceGroup, jumpboxSubnet, jumpboxASG, jumpboxNSG, jumpboxIP)
 
-	privateDNSZone := NewPrivateDNSZone(stack, resourceGroup)
-	NewDNSZoneVNetLink(stack, naming, resourceGroup, privateDNSZone, vnet)
+	privateDNSZone := NewPrivateDNSZone(coreStack, resourceGroup)
+	NewDNSZoneVNetLink(coreStack, naming, resourceGroup, privateDNSZone, vnet)
 
 	return CoreStack{
 		MongoDBNaming:  mongoDBNaming,
 		JumpboxNaming:  jumpboxNaming,
 		VirtualNetwork: vnet,
 	}
-}
-
-func NewAzureRMProvider(stack tf.TerraformStack) p.AzurermProvider {
-	input := p.AzurermProviderConfig{
-		Features:       &p.AzurermProviderFeatures{},
-		SubscriptionId: x.Config.SubscriptionId,
-	}
-
-	return p.NewAzurermProvider(stack, x.Ids.AzureRMProvider, &input)
-}
-
-func NewResourceGroup(stack tf.TerraformStack, naming n.NamingModule) rg.ResourceGroup {
-	input := rg.ResourceGroupConfig{
-		Name:     naming.ResourceGroupOutput(),
-		Location: x.Config.Regions.Primary,
-	}
-
-	return rg.NewResourceGroup(stack, x.Ids.ResourceGroup, &input)
 }
 
 func NewASG(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) asg.ApplicationSecurityGroup {
