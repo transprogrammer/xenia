@@ -1,6 +1,6 @@
 # xenia
 
-A discord project solution.
+An azure cdktf project solution.
 
 ## toolchain
 
@@ -32,3 +32,16 @@ A discord project solution.
 ## references
 
 - [terraform cdk go examples](https://github.com/hashicorp/terraform-cdk/tree/main/examples/go)
+
+## Glossary of Initialisms
+
+<dl>
+    <dt>ASG</dt>
+    <dd>Application Security Group.</dd>
+
+    <dt>NIC</dt>
+    <dd>Network Interface</dd>
+
+    <dt>NSG</dt>
+    <dd>Network Security Group</dd>
+</dl>
