@@ -3,34 +3,33 @@ package core
 import (
 	"fmt"
 
-	gn "github.com/transprogrammer/xenia/generated/naming"
-	x "github.com/transprogrammer/xenia/internal/config"
-	n "github.com/transprogrammer/xenia/internal/naming"
+	"github.com/hashicorp/terraform-cdk-go/cdktf"
+	"github.com/transprogrammer/xenia/internal/config"
+	"github.com/transprogrammer/xenia/internal/naming"
 	"github.com/transprogrammer/xenia/internal/stack"
 
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
-	asg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/applicationsecuritygroup"
-	nic "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networkinterface"
-	nicasg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networkinterfaceapplicationsecuritygroupassociation"
-	nicnsg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networkinterfacesecuritygroupassociation"
-	nsg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networksecuritygroup"
-	dns "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/privatednszone"
-	dnsl "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/privatednszonevirtualnetworklink"
-	ip "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/publicip"
-	rg "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/resourcegroup"
-	vnet "github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualnetwork"
-	tf "github.com/hashicorp/terraform-cdk-go/cdktf"
+	"github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/applicationsecuritygroup"
+	"github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/networksecuritygroup"
+	"github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/privatednszone"
+	"github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/privatednszonevirtualnetworklink"
+	"github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/publicip"
+	"github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/resourcegroup"
+	"github.com/cdktf/cdktf-provider-azurerm-go/azurerm/v5/virtualnetwork"
 )
 
 type CoreStack struct {
-	TerraformStack tf.TerraformStack
-	MongoDBNaming  gn.Naming
-	JumpboxNaming  gn.Naming
-	VirtualNetwork vnet.VirtualNetwork
+	TerraformStack                  cdktf.TerraformStack
+	MongoDBNamingModule             naming.NamingModule
+	MongoDBSubnet                   virtualnetwork.VirtualNetworkSubnet
+	JumpboxNamingModule             naming.NamingModule
+	JumpboxSubnet                   virtualnetwork.VirtualNetworkSubnet
+	JumpboxApplicationSecurityGroup applicationsecuritygroup.ApplicationSecurityGroup
+	JumpboxNetworkSecurityGroup     networksecuritygroup.NetworkSecurityGroup
 }
 
-func (s CoreStack) Stack() tf.TerraformStack {
+func (s CoreStack) Stack() cdktf.TerraformStack {
 	return s.TerraformStack
 }
 
@@ -39,62 +38,82 @@ const (
 	MongoDBIndex
 )
 
-func NewStack(scope constructs.Construct) CoreStack {
-	coreStack := tf.NewTerraformStack(scope, x.Stacks.Core)
+func NewStack(
+	scope constructs.Construct,
+) CoreStack {
+
+	coreStack := cdktf.NewTerraformStack(scope, config.Stacks.Core)
 
 	stack.NewAzureRMProvider(coreStack)
 
-	naming := n.NewNamingModule(coreStack, x.Names.Core)
-	mongoDBNaming := n.NewNamingModule(coreStack, x.Names.MongoDB)
-	jumpboxNaming := n.NewNamingModule(coreStack, x.Names.Jumpbox)
+	namingModule := naming.NewNamingModule(coreStack, config.Names.Core)
+	mongoDBNamingModule := naming.NewNamingModule(coreStack, config.Names.MongoDB)
+	jumpboxNamingModule := naming.NewNamingModule(coreStack, config.Names.Jumpbox)
 
-	resourceGroup := stack.NewResourceGroup(coreStack, naming)
+	resourceGroup := stack.NewResourceGroup(coreStack, namingModule)
 
-	jumpboxASG := NewASG(coreStack, jumpboxNaming, resourceGroup)
-	jumpboxNSG := NewNSG(coreStack, jumpboxNaming, resourceGroup, jumpboxASG)
+	jumpboxApplicationSecurityGroup := NewApplicationSecurityGroup(coreStack, jumpboxNamingModule, resourceGroup)
+	jumpboxNetworkSecurityGroup := NewNetworkSecurityGroup(coreStack, jumpboxNamingModule, resourceGroup, jumpboxApplicationSecurityGroup)
 
-	subnetInputs := make([]vnet.VirtualNetworkSubnet, 2)
+	subnetInputs := make([]virtualnetwork.VirtualNetworkSubnet, 2)
 
-	jumpboxSubnetInput := NewSubnetInput(coreStack, jumpboxNaming, jumpboxNSG, x.Config.Subnets.Jumpbox)
+	jumpboxSubnetInput := NewSubnetInput(coreStack, jumpboxNamingModule, jumpboxNetworkSecurityGroup, config.Config.Subnets.Jumpbox)
 	subnetInputs[JumpboxIndex] = jumpboxSubnetInput
 
-	mongoDBSubnetInput := NewSubnetInput(coreStack, mongoDBNaming, nil, x.Config.Subnets.MongoDB)
+	mongoDBSubnetInput := NewSubnetInput(coreStack, mongoDBNamingModule, nil, config.Config.Subnets.MongoDB)
 	subnetInputs[MongoDBIndex] = mongoDBSubnetInput
 
-	vnet := NewVNet(coreStack, naming, resourceGroup, subnetInputs)
+	virtualNetwork := NewVirtualNetwork(coreStack, namingModule, resourceGroup, subnetInputs)
 
-	jumpboxSubnet := GetSubnet(vnet, JumpboxIndex)
-	// mongoDBSubnet := GetSubnet(vnet, MongoDBIndex)
-
-	jumpboxIP := NewIP(coreStack, jumpboxNaming, resourceGroup)
-	NewNIC(coreStack, jumpboxNaming, resourceGroup, jumpboxSubnet, jumpboxASG, jumpboxNSG, jumpboxIP)
+	jumpboxSubnet := GetSubnet(virtualNetwork, JumpboxIndex)
+	mongoDBSubnet := GetSubnet(virtualNetwork, MongoDBIndex)
 
 	privateDNSZone := NewPrivateDNSZone(coreStack, resourceGroup)
 	NewDNSZoneVNetLink(coreStack, naming, resourceGroup, privateDNSZone, vnet)
 
 	return CoreStack{
-		MongoDBNaming:  mongoDBNaming,
-		JumpboxNaming:  jumpboxNaming,
-		VirtualNetwork: vnet,
+		TerraformStack:                  coreStack,
+		MongoDBNamingModule:             mongoDBNamingModule,
+		MongoDBSubnet:                   mongoDBSubnet,
+		JumpboxNaming:                   jumpboxNamingModule,
+		JumpboxSubnet:                   jumpboxSubnet,
+		JumpboxApplicationSecurityGroup: jumpboxApplicationSecurityGroup,
+		JumpboxNetworkSecurityGroup:     jumpboxNetworkSecurityGroup,
+		VirtualNetwork:                  vnet,
 	}
 }
 
-func NewASG(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup) asg.ApplicationSecurityGroup {
-	input := asg.ApplicationSecurityGroupConfig{
+func NewApplicationSecurityGroup(
+	stack cdktf.TerraformStack,
+	naming naming.NamingModule,
+	resourceGroup resourcegroup.ResourceGroup,
+) applicationsecuritygroup.ApplicationSecurityGroup {
+
+	input := applicationsecuritygroup.ApplicationSecurityGroupConfig{
 		Name:              naming.ApplicationSecurityGroupOutput(),
-		Location:          x.Config.Regions.Primary,
+		Location:          config.Config.Regions.Primary,
 		ResourceGroupName: resourceGroup.Name(),
 	}
 
-	return asg.NewApplicationSecurityGroup(stack, x.Ids.ApplicationSecurityGroup, &input)
+	return applicationsecuritygroup.NewApplicationSecurityGroup(
+		stack,
+		config.Ids.ApplicationSecurityGroup,
+		&input,
+	)
 }
 
-func NewNSG(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, asg asg.ApplicationSecurityGroup) nsg.NetworkSecurityGroup {
-	input := nsg.NetworkSecurityGroupConfig{
+func NewNetworkSecurityGroup(
+	stack cdktf.TerraformStack,
+	naming naming.NamingModule,
+	resourceGroup resourcegroup.ResourceGroup,
+	asg applicationsecuritygroup.ApplicationSecurityGroup,
+) networksecuritygroup.NetworkSecurityGroup {
+
+	input := networksecuritygroup.NetworkSecurityGroupConfig{
 		Name:              naming.NetworkSecurityGroupOutput(),
-		Location:          x.Config.Regions.Primary,
+		Location:          config.Config.Regions.Primary,
 		ResourceGroupName: resourceGroup.Name(),
-		SecurityRule: nsg.NetworkSecurityGroupSecurityRule{
+		SecurityRule: networksecuritygroup.NetworkSecurityGroupSecurityRule{
 			Name:                                   jsii.String("SSH"),
 			Description:                            jsii.String("Allow SSH"),
 			Priority:                               jsii.Number(100),
@@ -109,110 +128,86 @@ func NewNSG(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.Res
 		},
 	}
 
-	return nsg.NewNetworkSecurityGroup(stack, x.Ids.NetworkSecurityGroup, &input)
+	return networksecuritygroup.NewNetworkSecurityGroup(
+		stack,
+		config.Ids.NetworkSecurityGroup,
+		&input,
+	)
 }
 
-func NewSubnetInput(stack tf.TerraformStack, naming n.NamingModule, networkSecurityGroup nsg.NetworkSecurityGroup, addressPrefix *string) vnet.VirtualNetworkSubnet {
-	return vnet.VirtualNetworkSubnet{
+func NewSubnetInput(
+	stack cdktf.TerraformStack,
+	naming naming.NamingModule,
+	networkSecurityGroup networksecuritygroup.NetworkSecurityGroup,
+	addressPrefix *string,
+) virtualnetwork.VirtualNetworkSubnet {
+
+	return virtualnetwork.VirtualNetworkSubnet{
 		Name:          naming.SubnetOutput(),
 		AddressPrefix: addressPrefix,
 		SecurityGroup: networkSecurityGroup.Id(),
 	}
 }
 
-func NewIP(stack tf.TerraformStack, naming n.NamingModule, group rg.ResourceGroup) ip.PublicIp {
-	input := ip.PublicIpConfig{
+func NewPublicIP(
+	stack cdktf.TerraformStack,
+	naming naming.NamingModule,
+	group resourcegroup.ResourceGroup,
+) publicip.PublicIp {
+
+	input := publicip.PublicIpConfig{
 		Name:                 naming.PublicIpOutput(),
-		Location:             x.Config.Regions.Primary,
+		Location:             config.Config.Regions.Primary,
 		ResourceGroupName:    group.Name(),
 		Sku:                  jsii.String("Basic"),
 		AllocationMethod:     jsii.String("Dynamic"),
 		IpVersion:            jsii.String("IPv4"),
-		DomainNameLabel:      x.Config.ProjectName,
+		DomainNameLabel:      config.Config.ProjectName,
 		IdleTimeoutInMinutes: jsii.Number(4),
 	}
 
-	return ip.NewPublicIp(stack, x.Ids.PublicIPAddress, &input)
+	return publicip.NewPublicIp(stack, config.Ids.PublicIPAddress, &input)
 }
 
 // HACK: Inline subnets too enable updating in-place. <>
 // SEE: https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deployment-modes#incremental-mode <>
 
-func NewVNet(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, subnets []vnet.VirtualNetworkSubnet) vnet.VirtualNetwork {
-	input := vnet.VirtualNetworkConfig{
+func NewVirtualNetwork(stack cdktf.TerraformStack, naming naming.NamingModule, resourceGroup resourcegroup.ResourceGroup, subnets []virtualnetwork.VirtualNetworkSubnet) virtualnetwork.VirtualNetwork {
+	input := virtualnetwork.VirtualNetworkConfig{
 		Name:              naming.VirtualNetworkOutput(),
-		AddressSpace:      x.Config.AddressSpace,
+		AddressSpace:      config.Config.AddressSpace,
 		Location:          resourceGroup.Location(),
 		ResourceGroupName: resourceGroup.Name(),
 		Subnet:            subnets,
 	}
 
-	return vnet.NewVirtualNetwork(stack, x.Ids.VirtualNetwork, &input)
+	return virtualnetwork.NewVirtualNetwork(stack, config.Ids.VirtualNetwork, &input)
 }
 
-type VNet struct {
-	vnet.VirtualNetwork
-}
-
-// NOTE: Wrap VNet to provide access to subnets by index. <>
-func GetSubnet(vnet vnet.VirtualNetwork, index float64) vnet.VirtualNetworkSubnetOutputReference {
+// NOTE: Wrap VNet to provide access to subnets by indeconfig. <>
+func GetSubnet(vnet virtualnetwork.VirtualNetwork, index float64) virtualnetwork.VirtualNetworkSubnetOutputReference {
 	return vnet.Subnet().Get(&index)
 }
 
-func (vnet VNet) VirtualMachineSubnet() vnet.VirtualNetworkSubnetOutputReference {
-	index := float64(JumpboxIndex)
-	return vnet.Subnet().Get(&index)
-}
-
-func NewNIC(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, subnet vnet.VirtualNetworkSubnetOutputReference, asg asg.ApplicationSecurityGroup, nsg nsg.NetworkSecurityGroup, ip ip.PublicIp) nic.NetworkInterface {
-	input := nic.NetworkInterfaceConfig{
-		Name:              naming.NetworkInterfaceOutput(),
-		Location:          x.Config.Regions.Primary,
-		ResourceGroupName: resourceGroup.Name(),
-
-		IpConfiguration: nic.NetworkInterfaceIpConfiguration{
-			Name:              jsii.String("ipconfig"),
-			Primary:           jsii.Bool(true),
-			SubnetId:          subnet.Id(),
-			PublicIpAddressId: ip.Id(),
-		},
-	}
-	nic := nic.NewNetworkInterface(stack, x.Ids.NetworkInterface, &input)
-
-	asgInput := nicasg.NetworkInterfaceApplicationSecurityGroupAssociationConfig{
-		NetworkInterfaceId:         nic.Id(),
-		ApplicationSecurityGroupId: asg.Id(),
-	}
-	nicasg.NewNetworkInterfaceApplicationSecurityGroupAssociation(stack, x.Ids.NetworkInterfaceASGAssociation, &asgInput)
-
-	nsgInput := nicnsg.NetworkInterfaceSecurityGroupAssociationConfig{
-		NetworkInterfaceId:     nic.Id(),
-		NetworkSecurityGroupId: nsg.Id(),
-	}
-	nicnsg.NewNetworkInterfaceSecurityGroupAssociation(stack, x.Ids.NetworkInterfaceNSGAssociation, &nsgInput)
-
-	return nic
-}
-
-func NewPrivateDNSZone(stack tf.TerraformStack, resourceGroup rg.ResourceGroup) dns.PrivateDnsZone {
-	input := dns.PrivateDnsZoneConfig{
+func NewPrivateDNSZone(stack cdktf.TerraformStack, resourceGroup resourcegroup.ResourceGroup) privatednszone.PrivateDnsZone {
+	input := privatednszone.PrivateDnsZoneConfig{
 		Name:              jsii.String("privatelink.mongo.cosmos.azure.com"),
 		ResourceGroupName: resourceGroup.Name(),
 	}
 
-	return dns.NewPrivateDnsZone(stack, x.Ids.PrivateDNSZone, &input)
+	return privatednszone.NewPrivateDnsZone(stack, config.Ids.PrivateDNSZone, &input)
 }
 
-func NewDNSZoneVNetLink(stack tf.TerraformStack, naming n.NamingModule, resourceGroup rg.ResourceGroup, privateDnsZone dns.PrivateDnsZone, vnet vnet.VirtualNetwork) dnsl.PrivateDnsZoneVirtualNetworkLink {
+func NewDNSZoneVNetLink(stack cdktf.TerraformStack, naming naming.NamingModule, resourceGroup resourcegroup.ResourceGroup, privateDnsZone privatednszone.PrivateDnsZone, vnet virtualnetwork.VirtualNetwork) privatednszonevirtualnetworklink.PrivateDnsZoneVirtualNetworkLink {
 	name := fmt.Sprintf("%-vnetlink", naming.PrivateDnsZoneOutput())
 
-	input := dnsl.PrivateDnsZoneVirtualNetworkLinkConfig{
+	input := privatednszonevirtualnetworklink.PrivateDnsZoneVirtualNetworkLinkConfig{
 		Name:                &name,
 		ResourceGroupName:   resourceGroup.Name(),
 		PrivateDnsZoneName:  privateDnsZone.Name(),
-		VirtualNetworkId:    vnet.Id(),
+		VirtualNetworkId:    virtualnetwork.Id(),
 		RegistrationEnabled: jsii.Bool(true),
 	}
 
-	return dnsl.NewPrivateDnsZoneVirtualNetworkLink(stack, x.Ids.PrivateDNSZoneVirtualNetworkLink, &input)
+	return privatednszonevirtualnetworklink.NewPrivateDnsZoneVirtualNetworkLink(stack, config.Ids.PrivateDNSZoneVirtualNetworkLink, &input)
 }
